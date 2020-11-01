@@ -6,7 +6,7 @@ OBJ = $(addprefix obj/,$(SRC:c=o))
 OBJDIR = obj
 
 INCS = -I.
-LIBS = -ljson-c
+LIBS = -ljson-c -lssl
 
 CFLAGS = -g $(INCS)
 LDFLAGS = $(LIBS)

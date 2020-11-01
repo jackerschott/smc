@@ -7,6 +7,8 @@
 
 #include <sys/socket.h>
 
+#include <openssl/ssl.h>
+
 #include "http.h"
 
 static size_t strip(const char *s, size_t n, char **o)
@@ -90,6 +92,7 @@ int http_recv_response(int fd, char **buf, size_t *size)
 
 		size_t readlen = recv(fd, *buf + len, remsize, 0);
 		if (readlen == -1) {
+			perror("http_recv_response");
 			return 1;
 		}
 		len += readlen;
@@ -112,7 +115,45 @@ int http_recv_response(int fd, char **buf, size_t *size)
 	return 0;
 }
 
-int http_parse_response(const char *const resp, struct header *head, char *body, size_t bodysize)
+int http_recv_response_ssl(SSL *ssl, char **buf, size_t *size)
+{
+	struct pollfd pfd = { .fd = SSL_get_fd(ssl), .events = POLLIN };
+
+	size_t len = 0;
+	size_t remsize = *size;
+	while (1) {
+		int res = poll(&pfd, 1, 3000);
+		if (res == -1) {
+			return 1;
+		} else if (!res) {
+			return 1;
+		}
+
+		size_t readlen = SSL_read(ssl, *buf + len, remsize);
+		if (readlen == -1) {
+			return 1;
+		}
+		len += readlen;
+		remsize -= readlen;
+
+		if (len >= 4 && strncmp(*buf + len - 4, "\r\n\r\n", 4) == 0) {
+			break;
+		}
+
+		if (remsize == 0) {
+			char *bufnew = realloc(*buf, len + HTTP_RESP_READSIZE);
+			if (!bufnew)
+				return 1;
+			*buf = bufnew;
+			remsize = HTTP_RESP_READSIZE;
+		}
+	}
+	(*buf)[len] = '\0';
+	*size = len + remsize;
+	return 0;
+}
+
+int http_parse_response(const char *const resp, struct respheader *head, char *body, size_t bodysize)
 {
 	const char *c = resp;
 
@@ -183,6 +224,8 @@ int http_parse_response(const char *const resp, struct header *head, char *body,
 
 int http_parse_chunked(const char *s, size_t l, char* buf, size_t bufsize)
 {
+	buf[0] = '\0';
+
 	const char *e = s;
 	int r;
 	while ((r = parse_chunk(&e, l, buf, bufsize)) != 1) {
@@ -194,6 +237,26 @@ int http_parse_chunked(const char *s, size_t l, char* buf, size_t bufsize)
 		l -= off;
 		if (l == 0)
 			return 0;
+	}
+	return 0;
+}
+
+int http_create_request(struct reqheader* head, const char *body, char *req, size_t reqsize)
+{
+	int n = snprintf(req, reqsize, "%s %s HTTP/%s\r\n", head->type, head->target, head->version);
+	if (n > reqsize)
+		return -1;
+	for (int i = 0; i < head->nfields; ++i) {
+		strcat(req, head->fields[i].name);
+		strcat(req, ": ");
+		strcat(req, head->fields[i].value);
+		strcat(req, "\r\n");
+	}
+	strcat(req, "\r\n");
+
+	if (body) {
+		strcat(req, body);
+		strcat(req, "\r\n\r\n");
 	}
 	return 0;
 }
