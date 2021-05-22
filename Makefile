@@ -1,43 +1,18 @@
-VERSION = 1.0
-PREFIX = /usr/local
-
-VPATH = src
-
-MTXROOMS_PROGNAME = mtxrooms
 BUILDDIR = build
-OBJDIR = $(BUILDDIR)/obj
-
-MTXROOMS_PROG = $(BUILDDIR)/$(MTXROOMS_PROGNAME)
-MTXROOMS_SRC = mtxrooms.c api.c parse.c list.c
-MTXROOMS_OBJ = $(addprefix $(OBJDIR)/,$(MTXROOMS_SRC:.c=.o))
-
-INCS = 
-LIBS = -ljson-c -lcurl
-CFLAGS = -g $(INCS)
-LDFLAGS = $(LIBS)
+MTXMSG_NAME = mtxmsg
 
 GDB_INIT = init.gdb
 
-$(MTXROOMS_PROG): $(OBJDIR) $(MTXROOMS_OBJ)
-	$(CC) -o $@ $(MTXROOMS_OBJ) $(LDFLAGS)
+compile: $(BUILDDIR)
+	ninja -C $(BUILDDIR)
 
-$(MTXROOMS_OBJ): $(OBJDIR)/%.o: %.c
-	$(CC) -c -o $@ $< $(CFLAGS)
-
-$(OBJDIR):
-	mkdir -p $(OBJDIR)
+$(BUILDDIR):
+	meson $(BUILDDIR)
 
 clean:
 	rm -rf $(BUILDDIR)
 
-#install: $(PROG)
-#	mkdir -p $(DESTDIR)$(PREFIX)/bin
-#	cp -f $(PROG) $(DESTDIR)$(PREFIX)/bin
-#	chmod 755 $(DESTDIR)$(PREFIX)/bin/$(PROG)
-#uninstall:
-#	rm -f $(DESTDIR)$(PREFIX)/bin/$(PROG)
-
 drun: $(MTXROOMS_PROG)
-	gdb -x $(GDB_INIT) $(BUILDDIR)/$(MTXROOMS_PROGNAME)
+	gdb -x $(GDB_INIT) $(BUILDDIR)/$(MTXMSG_NAME)
 
-.PHONY: clean install uninstall drun
+.PHONY: clean drun compile

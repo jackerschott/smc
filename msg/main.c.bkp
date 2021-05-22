@@ -1,0 +1,37 @@
+#include <stdio.h>
+#include <ncurses.h>
+
+#define ARRNUM(x) (sizeof(x) / sizeof((x)[0]))
+#define STRLEN(x) (sizeof(x) - 1)
+
+static const char *writers[] = {
+	"valkyrie",
+	"skulduggery",
+	"valkyrie",
+	"valkyrie",
+	"skulduggery",
+	"skulduggery",
+};
+static const char *dialogue[] = {
+	"I almost died there!",
+	"Well you didn't. Everything was under control.",
+	"Nothing was under control!",
+	"There are million things that could've happened. You could've slipped.",
+	"I wouldn't have slipped!",
+	"My movements are far to gracefully for that",
+};
+
+int main() {
+	initscr();
+
+	raw();
+
+
+	addstr(dialogue[0]);
+	refresh();
+
+	getch();
+	endwin();
+
+	return 0;
+}
