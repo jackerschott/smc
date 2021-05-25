@@ -23,10 +23,12 @@
 #include <unistd.h>
 
 #include <curl/curl.h>
+#include <json-c/json.h>
 
 #include "api.h"
+#include "hjson.h"
 #include "smc.h"
-#include "json-c/json.h"
+#include "state.h"
 
 #define CURLERR(code) do { \
 	fprintf(stderr, "%s:%d/%s: ", __FILE__, __LINE__, __func__); \
@@ -52,6 +54,21 @@ int lastcode;
 merror_t lasterr;
 char lasterrmsg[ERRORMSG_BUFSIZE];
 
+int get_response_error(const json_object *resp, int code, merror_t *merror, char *errormsg)
+{
+	int err;
+	int merr;
+	if ((err = get_object_as_enum(resp, "errcode", &merr, MERROR_NUM, merrorstr)))
+		return err;
+	*merror = (merror_t)merr;
+
+	json_object *obj;
+	json_object_object_get_ex(resp, "error", &obj);
+	strcpy(errormsg, json_object_get_string(obj));
+	errormsg[0] = tolower(errormsg[0]);
+	return 0;
+}
+
 static size_t hrecv(void *buf, size_t sz, size_t n, void *data)
 {
 	respbuf_t *resp = (respbuf_t *)data;
@@ -71,7 +88,6 @@ static size_t hrecv(void *buf, size_t sz, size_t n, void *data)
 	resp->len += n;
 	return n;
 }
-
 
 int api_init(void)
 {
@@ -362,7 +378,7 @@ err_free_rooms:
 	return -1;
 }
 
-int api_sync(state_t **state)
+int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *leftrooms)
 {
 	assert(accesstoken);
 
@@ -378,7 +394,7 @@ int api_sync(state_t **state)
 		return err;
 	}
 
-	if ((err = parse_state(resp, state))) {
+	if ((err = apply_state_updates(resp, joinedrooms, invitedrooms, leftrooms))) {
 		json_object_put(resp);
 		return err;
 	}

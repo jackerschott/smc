@@ -25,15 +25,15 @@ void list_init(listentry_t *e)
 	e->next = e;
 	e->prev = e;
 }
-void list_concat(listentry_t *list1, listentry_t *list2)
+void list_concat(listentry_t *head, listentry_t *list)
 {
-	if (!list_empty(list1))
-		__list_concat(list1, list2->prev, list2);
+	if (!list_empty(list))
+		__list_concat(list, head->prev, head);
 }
-void list_concat_head(listentry_t *list1, listentry_t *list2)
+void list_concat_head(listentry_t *head, listentry_t *list)
 {
-	if (!list_empty(list1))
-		__list_concat(list1, list2, list2->next);
+	if (!list_empty(list))
+		__list_concat(list, head, head->next);
 }
 void list_add(listentry_t *head, listentry_t *e)
 {
