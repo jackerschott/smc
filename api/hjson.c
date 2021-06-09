@@ -61,6 +61,11 @@ int get_object_as_enum(const json_object *obj, const char *key, int *e, int n, c
 	assert(0);
 }
 
+void object_add_enum(json_object *obj, const char *key, int e, const char **strs)
+{
+	json_object_object_add(obj, key, json_object_new_string(strs[e]));
+}
+
 //int get_object_as_string_array(const json_object *obj, const char *key,
 //		size_t *nstrings, char ***strings)
 //{

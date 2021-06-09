@@ -11,4 +11,6 @@ int get_object_as_string(const json_object *obj, const char *key, char **str);
 int get_object_as_bool(const json_object *obj, const char *key, int *b);
 int get_object_as_enum(const json_object *obj, const char *key, int *e, int n, const char **strs);
 
+void object_add_enum(json_object *obj, const char *key, int e, const char **strs);
+
 #endif /* HJSON_H */

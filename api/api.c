@@ -20,6 +20,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include <curl/curl.h>
@@ -38,6 +39,8 @@
 #define URL_BUFSIZE 1024U
 #define RESP_READSIZE 4096U
 
+#define SECOND (1000L * 1000L * 1000L)
+
 CURL *handle;
 const char *baseurl = "https://localhost:8080";
 
@@ -50,9 +53,9 @@ typedef struct respbuf_t respbuf_t;
 
 char *accesstoken;
 
-int lastcode;
-merror_t lasterr;
-char lasterrmsg[ERRORMSG_BUFSIZE];
+int api_last_code;
+merror_t api_last_err;
+char api_last_errmsg[API_ERRORMSG_BUFSIZE];
 
 int get_response_error(const json_object *resp, int code, merror_t *merror, char *errormsg)
 {
@@ -87,6 +90,13 @@ static size_t hrecv(void *buf, size_t sz, size_t n, void *data)
 	memcpy(c, buf, n);
 	resp->len += n;
 	return n;
+}
+
+static void generate_transaction_id(char *s)
+{
+	struct timespec ts;
+	clock_gettime(CLOCK_REALTIME, &ts);
+	sprintf(s, "%li", ts.tv_sec * SECOND + ts.tv_nsec);
 }
 
 int api_init(void)
@@ -165,7 +175,7 @@ int api_call(const char *request, const char *target, const char *urlparams,
 	curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &c);
 
 	json_object *resp = json_tokener_parse(respbuf.data);
-	if (!response) {
+	if (!resp) {
 		fprintf(stderr, "%s: could not parse response", __func__);
 		free(respbuf.data);
 		return -1;
@@ -174,13 +184,13 @@ int api_call(const char *request, const char *target, const char *urlparams,
 	*response = resp;
 	*code = c;
 
-	lastcode = c;
+	api_last_code = c;
 	if (c == 200) {
-		lasterr = M_SUCCESS;
-		strcpy(lasterrmsg, "Success");
+		api_last_err = M_SUCCESS;
+		strcpy(api_last_errmsg, "Success");
 		return 0;
 	} else {
-		if (get_response_error(resp, c, &lasterr, lasterrmsg))
+		if (get_response_error(resp, c, &api_last_err, api_last_errmsg))
 			return -1;
 		return 1;
 	} 
@@ -256,9 +266,6 @@ int api_room_create(const char *clientid, const char *name, const char *alias,
 	char urlparams[URL_BUFSIZE];
 	strcpy(urlparams, "access_token=");
 	strcat(urlparams, accesstoken);
-
-	//printf("%s\n", json_object_to_json_string_ext(data, JSON_C_TO_STRING_PRETTY));
-	//assert(0);
 
 	int code;
 	json_object *resp = json_object_new_object();
@@ -394,10 +401,115 @@ int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *l
 		return err;
 	}
 
-	if ((err = apply_state_updates(resp, joinedrooms, invitedrooms, leftrooms))) {
+	if ((err = apply_sync_state_updates(resp, joinedrooms, invitedrooms, leftrooms))) {
 		json_object_put(resp);
 		return err;
 	}
+	json_object_put(resp);
+	return 0;
+}
+
+int api_send(const char *roomid, const char* evtype,  json_object *event, char **evid)
+{
+	assert(accesstoken);
+
+	char txnid[32];
+	generate_transaction_id(txnid);
+
+	char target[URL_BUFSIZE];
+	strcpy(target, "/_matrix/client/r0/rooms/");
+	strcat(target, roomid);
+	strcat(target, "/send/");
+	strcat(target, evtype);
+	strcat(target, "/");
+	strcat(target, txnid);
+
+	char urlparams[URL_BUFSIZE];
+	strcpy(urlparams, "access_token=");
+	strcat(urlparams, accesstoken);
+
+	int code;
+	json_object *resp = json_object_new_object();
+	int err = api_call("PUT", target, urlparams, event, &code, &resp);
+	if (err) {
+		json_object_put(resp);
+		return err;
+	}
+
+	if ((err = get_object_as_string(resp, "event_id", evid))) {
+		json_object_put(resp);
+		return err;
+	}
+	json_object_put(resp);
+	return 0;
+}
+
+int api_send_msg(const char *roomid, msg_t *msg, char **evid)
+{
+	json_object *event = json_object_new_object();
+	json_object_object_add(event, "body", json_object_new_string(msg->body));
+	object_add_enum(event, "msgtype", msg->type, msg_type_str);
+
+	int err = api_send(roomid, "m.room.message", event, evid);
+	json_object_put(event);
+	return err;
+}
+
+int api_invite(const char *roomid, const char *userid)
+{
+	json_object *data = json_object_new_object();
+	if (!data)
+		return -1;
+
+	json_object *tmp = json_object_new_string(userid);
+	if (!tmp) {
+		json_object_put(data);
+		return -1;
+	}
+	json_object_object_add(data, "user_id", tmp);
+
+	char target[URL_BUFSIZE];
+	strcpy(target, "/_matrix/client/r0/rooms/");
+	strcat(target, roomid);
+	strcat(target, "/invite");
+
+	char urlparams[URL_BUFSIZE];
+	strcpy(urlparams, "access_token=");
+	strcat(urlparams, accesstoken);
+
+	int code;
+	json_object *resp;
+	int err = api_call("POST", target, urlparams, data, &code, &resp);
+	if (err) {
+		json_object_put(resp);
+		json_object_put(data);
+		return err;
+	}
+
+	json_object_put(resp);
+	json_object_put(data);
+	return 0;
+}
+
+int api_join(const char *roomid)
+{
+	char target[URL_BUFSIZE];
+	strcpy(target, "/_matrix/client/r0/rooms/");
+	strcat(target, roomid);
+	strcat(target, "/join");
+
+	char urlparams[URL_BUFSIZE];
+	strcpy(urlparams, "access_token=");
+	strcat(urlparams, accesstoken);
+
+	int code;
+	json_object *resp;
+	int err = api_call("POST", target, urlparams, NULL, &code, &resp);
+	if (err) {
+		json_object_put(resp);
+		return err;
+	}
+
 	json_object_put(resp);
 	return 0;
 }

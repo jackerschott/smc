@@ -31,8 +31,9 @@ typedef enum {
 typedef struct {
 	listentry_t entry;
 
-	char *name;
+	char *userid;
 	membership_t membership;
+	char *displayname;
 	char *avatarurl;
 } member_t;
 typedef struct {
@@ -61,6 +62,31 @@ typedef struct {
 	char *id;
 	char *lasteventid;
 } prevroom_t;
+
+typedef enum {
+	MSG_TEXT,
+	MSG_EMOTE,
+	MSG_NOTICE,
+	MSG_IMAGE,
+	MSG_FILE,
+	MSG_AUDIO,
+	MSG_LOCATION,
+	MSG_VIDEO,
+	MSG_NUM,
+} msg_type_t;
+
+typedef struct {
+	listentry_t entry;
+	msg_type_t type;
+	char *sender;
+	char *body;
+} msg_t;
+typedef struct {
+	msg_t msg;
+	char *format;
+	char *fmtbody;
+} msg_text_t;
+
 typedef struct {
 	listentry_t entry;
 
@@ -75,6 +101,8 @@ typedef struct {
 	char *version;
 	int federate;
 	prevroom_t *replacetarget;
+
+	listentry_t messages;
 } room_t;
 
 static const char *history_visibility_str[] = {
@@ -97,7 +125,20 @@ static const char *membership_str[] = {
 	"knock"
 };
 
-int apply_state_updates(json_object *obj, listentry_t *joinedrooms,
+static const char *msg_type_str[] = {
+	"m.text",
+	"m.emote",
+	"m.notice",
+	"m.image",
+	"m.file",
+	"m.audio",
+	"m.location",
+	"m.video",
+};
+
+void free_room(room_t *room);
+
+int apply_sync_state_updates(json_object *obj, listentry_t *joinedrooms,
 		listentry_t *invitedrooms, listentry_t *leftrooms);
 
 #endif /* STATE_H */

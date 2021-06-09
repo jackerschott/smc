@@ -11,14 +11,36 @@
 
 #include "api.h"
 #include "list.h"
+#include "menu.h"
 #include "smc.h"
+#include "room.h"
 #include "state.h"
+#include "ui.h"
 
-listentry_t rooms_joined;
-listentry_t rooms_invited;
-listentry_t rooms_left;
+//static const char *writers[] = {
+//	"valkyrie",
+//	"skulduggery",
+//	"valkyrie",
+//	"valkyrie",
+//	"skulduggery",
+//	"skulduggery",
+//};
+//static const char *dialogue[] = {
+//	"I almost died there!",
+//	"Well you didn't. Everything was under control.",
+//	"Nothing was under control!",
+//	"There are million things that could've happened. You could've slipped.",
+//	"I wouldn't have slipped!",
+//	"My movements are far to gracefully for that",
+//};
 
-#define TOKEN_FILE_PATH (CONFIG_DIR "accesstoken")
+struct {
+	char *username;
+	char *pass;
+} options;
+
+
+#define TOKEN_FILE_PATH (CONFIG_DIR "accesstoken_bob")
 #define HREAD_BUFSIZE 1024U
 
 static int hread(int fd, char **buf, size_t *size)
@@ -53,7 +75,7 @@ static int hread(int fd, char **buf, size_t *size)
 	}
 	assert(0);
 }
-int save_token(char *token)
+static int save_token(char *token)
 {
 	int ftoken = open(TOKEN_FILE_PATH, O_CREAT | O_WRONLY, 0600);
 	if (ftoken == -1)
@@ -68,7 +90,7 @@ int save_token(char *token)
 	close(ftoken);
 	return 0;
 }
-int get_token(char **token)
+static int get_token(char **token)
 {
 	int ftoken = open(TOKEN_FILE_PATH, O_RDONLY);
 	if (ftoken == -1) {
@@ -92,7 +114,7 @@ int get_token(char **token)
 	return 0;
 }
 
-int ensure_login(void)
+static int ensure_login(void)
 {
 	char *token = NULL;
 	int err = get_token(&token);
@@ -100,14 +122,20 @@ int ensure_login(void)
 		fprintf(stderr, "%s: could not check token file\n", __func__);
 		return 1;
 	} else if (err == 1) {
-		err = api_login("alice", "alice", NULL, &token, NULL, NULL);
+		if (!options.username || !options.pass) {
+			printf("unable to login: no username or password supplied\n");
+			free(token);
+			return 2;
+		}
+
+		err = api_login(options.username, options.pass, NULL, &token, NULL, NULL);
 		if (err == -1) {
 			fprintf(stderr, "%s: login failed\n", __func__);
 			free(token);
 			return 1;
 		} else if (err == 1) {
 			fprintf(stderr, "%s: login failed, %s (%i)\n",
-					__func__, lasterrmsg, lastcode);
+					__func__, api_last_errmsg, api_last_code);
 			free(token);
 			return 1;
 		}
@@ -128,7 +156,51 @@ int ensure_login(void)
 	return 0;
 }
 
-void setup(void)
+int parse_options(int argc, char *const argv[])
+{
+	options.username = NULL;
+	options.pass = NULL;
+
+	int ret = 0;
+	const char *optstr = ":u:p:";
+	for (int c = getopt(argc, argv, optstr); c != -1; c = getopt(argc, argv, optstr)) {
+		if (c == ':') {
+			printf("missing argument to '-%c'\n", optopt);
+			ret = 1;
+			goto err_cleanup_options;
+		} else if (c == '?') {
+			printf("unexpected option '-%c'\n", c);
+			ret = 1;
+			goto err_cleanup_options;
+		}
+
+		char *s = strdup(optarg);
+		if (!s) {
+			ret = -1;
+			goto err_cleanup_options;
+		}
+		switch (c) {
+		case 'u':
+			options.username = s;
+			break;
+		case 'p':
+			options.pass = s;
+			break;
+		default:
+			assert(0);
+		}
+	}
+	return 0;
+
+err_cleanup_options:
+	free(options.username);
+	free(options.pass);
+	return ret;
+}
+
+static void cleanup(void);
+
+static void setup(void)
 {
 	int err;
 	if (api_init()) {
@@ -137,48 +209,87 @@ void setup(void)
 	}
 	if (ensure_login()) {
 		fprintf(stderr, "%s: Failed to login\n", __func__);
-		api_cleanup();
-		exit(1);
+		goto err_api_free;
 	}
 
-	list_init(&rooms_joined);
-	list_init(&rooms_left);
-	list_init(&rooms_invited);
-	if (api_sync(&rooms_joined, &rooms_left, &rooms_invited)) {
-		fprintf(stderr, "%s: could not synchronize state with server\n", __func__);
-		api_cleanup();
-		exit(1);
+	if (!initscr()) {
+		fprintf(stderr, "%s: failed to init ncurses\n", __func__);
+		goto err_api_free;
+	}
+	if (cbreak() == ERR) {
+		fprintf(stderr, "%s: could not set cbreak\n", __func__);
+		goto err_ncurses_free;
+	}
+	if (noecho() == ERR) {
+		fprintf(stderr, "%s: could not set noecho\n", __func__);
+		goto err_ncurses_free;
+	}
+	if (curs_set(0) == ERR) {
+		fprintf(stderr, "%s: could not hide cursor\n", __func__);
+		goto err_ncurses_free;
 	}
 
-	initscr();
-	err = raw();
-	if (err == ERR) {
-		fprintf(stderr, "%s: could not enter raw mode\n", __func__);
-		endwin();
-		api_cleanup();
-		exit(1);
+	if (room_menu_init()) {
+		fprintf(stderr, "%s: failed to initialize room menu\n", __func__);
+		goto err_ncurses_free;
 	}
+
+	if (room_init()) {
+		fprintf(stderr, "%s: failed to initialize room interface", __func__);
+		room_menu_cleanup();
+		goto err_ncurses_free;
+	}
+	return;
+
+err_interfaces_free:
+	room_cleanup();
+	room_menu_cleanup();
+err_ncurses_free:
+	endwin();
+err_api_free:
+	api_cleanup();
+	exit(1);
 }
-void run(void)
+static void run(void)
 {
-	int y, x;
-	getmaxyx(stdscr, y, x);
-
-	for (listentry_t *e = rooms_joined.next; e != &rooms_joined; e = e->next) {
-		room_t *room = LIST_ENTRY(e, room_t, entry);
-		printw("%s   %s   %s\n", room->name, room->topic, room->id);
-	}
 	refresh();
 
-	getch();
+	room_menu_draw();
+	uimode_t mode = MODE_ROOM_MENU;
+
+	int c;
+	int err;
+	while (1) {
+		c = getch();
+		switch (mode) {
+		case MODE_ROOM_MENU:
+			if ((err = room_menu_handle_key(c, &mode)))
+				goto err_cleanup;
+			break;
+		case MODE_ROOM:
+			if ((err = room_handle_key(c, &mode)))
+				goto err_cleanup;
+			break;
+		default:
+			assert(0);
+		}
+	}
+
+err_cleanup:
+	cleanup();
+	return;
 }
-void cleanup(void)
+static void cleanup(void)
 {
+	room_cleanup();
+	room_menu_cleanup();
 	endwin();
 	api_cleanup();
 }
 int main(int argc, char *argv[])
 {
+	parse_options(argc, argv);
+
 	setup();
 	run();
 	cleanup();

@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <json-c/json.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "state.h"
 #include "hjson.h"
@@ -22,6 +23,7 @@ typedef enum {
 	/* message events */
 	M_ROOM_REDACTION,
 
+	M_ROOM_MESSAGE,
 
 	EVENT_TYPE_NUM,
 } event_type_t;
@@ -40,18 +42,33 @@ static const char *event_type_strs[] = {
 	"m.room.history_visibility",
 
 	"m.room.redaction",
+	"m.room.message",
 };
+typedef struct {
+	char *id;
+	char *sender;
+	long ts;
+	long age;
+	char *transactid;
+
+	char *statekey;
+} roomevent_meta_t;
 
 void free_member(member_t *member)
 {
-	free(member->name);
 	free(member->avatarurl);
+	free(member->displayname);
+	free(member->userid);
 	free(member);
 }
 void free_powerlevel(powerlevel_t *powerlevel)
 {
 	free(powerlevel->name);
 	free(powerlevel);
+}
+void free_msg(msg_t *msg)
+{
+
 }
 
 int get_new_room(const char *roomid, room_t **room)
@@ -95,11 +112,15 @@ int get_new_room(const char *roomid, room_t **room)
 	r->federate = 1;
 	r->replacetarget = NULL;
 
+	list_init(&r->messages);
+
 	*room = r;
 	return 0;
 }
 void free_room(room_t *room)
 {
+	list_free(&room->messages, msg_t, entry, free_msg);
+
 	if (room->replacetarget) {
 		free(room->replacetarget->lasteventid);
 		free(room->replacetarget->id);
@@ -107,9 +128,9 @@ void free_room(room_t *room)
 	}
 	free(room->version);
 	free(room->creator);
-	LIST_FREE(&room->powerlevels.users, powerlevel_t, entry, free_powerlevel);
-	LIST_FREE(&room->powerlevels.events, powerlevel_t, entry, free_powerlevel);
-	LIST_FREE(&room->members, member_t, entry, free_member);
+	list_free(&room->powerlevels.users, powerlevel_t, entry, free_powerlevel);
+	list_free(&room->powerlevels.events, powerlevel_t, entry, free_powerlevel);
+	list_free(&room->members, member_t, entry, free_member);
 	free(room->topic);
 	free(room->name);
 	free(room->id);
@@ -135,7 +156,8 @@ int apply_powerlevel_table(json_object *obj, listentry_t *levels)
 	return 0;
 }
 
-int apply_room_create(json_object *obj, room_t *room)
+/* state events */
+int apply_room_create(json_object *obj, roomevent_meta_t *meta, room_t *room)
 {
 	free(room->creator);
 
@@ -202,18 +224,23 @@ err_free:
 	free(creator);
 	return err;
 }
-int apply_room_member(json_object *obj, room_t *room)
+int apply_room_member(json_object *obj, roomevent_meta_t *meta, room_t *room)
 {
 	member_t *member = malloc(sizeof(*member));
 	if (!member)
 		return -1;
-	member->name = NULL;
-	member->avatarurl = NULL;
+	member->userid = NULL;
 	member->membership = MEMBERSHIP_NUM;
+	member->displayname = NULL;
+	member->avatarurl = NULL;
+
+	char *userid = strdup(meta->statekey);
+	if (!userid)
+		return -1;
+	member->userid = userid;
 
 	int err;
-
-	if ((err = get_object_as_string(obj, "displayname", &member->name)) == -1)
+	if ((err = get_object_as_string(obj, "displayname", &member->displayname)) == -1)
 		goto err_free;
 
 	if ((err = get_object_as_enum(obj, "membership", (int *)&member->membership,
@@ -241,15 +268,27 @@ int apply_room_member(json_object *obj, room_t *room)
 		assert(0);
 	}
 
-	list_add(&room->members, &member->entry);
+	int overwritten = 0;
+	for (listentry_t *e = room->members.next; e != &room->members; e = e->next) {
+		member_t *m = list_entry(e, member_t, entry);
+		if (strcmp(m->userid, member->userid) == 0) {
+			list_replace(&m->entry, &member->entry);
+			free(m);
+			overwritten = 1;
+			break;
+		}
+	}
+	if (!overwritten)
+		list_add(&room->members, &member->entry);
 	return 0;
 
 err_free:
 	free(member->avatarurl);
-	free(member->name);
+	free(member->displayname);
+	free(member->userid);
 	return err;
 }
-int apply_room_powerlevels(json_object *obj, room_t *room)
+int apply_room_powerlevels(json_object *obj, roomevent_meta_t *meta, room_t *room)
 {
 	int err;
 	get_object_as_int(obj, "invite", &room->powerlevels.invite);
@@ -283,7 +322,7 @@ int apply_room_powerlevels(json_object *obj, room_t *room)
 
 	return 0;
 }
-int apply_room_joinrules(json_object *obj, room_t *room)
+int apply_room_joinrules(json_object *obj, roomevent_meta_t *meta, room_t *room)
 {
 	int err;
 	joinrule_t rule;
@@ -293,7 +332,7 @@ int apply_room_joinrules(json_object *obj, room_t *room)
 
 	return 0;
 }
-int apply_room_history_visibility(json_object *obj, room_t *room)
+int apply_room_history_visibility(json_object *obj, roomevent_meta_t *meta, room_t *room)
 {
 	int err;
 	history_visibility_t visib;
@@ -303,7 +342,7 @@ int apply_room_history_visibility(json_object *obj, room_t *room)
 
 	return 0;
 }
-int apply_room_name(json_object *obj, room_t *room)
+int apply_room_name(json_object *obj, roomevent_meta_t *meta, room_t *room)
 {
 	int err;
 	char *name;
@@ -314,7 +353,7 @@ int apply_room_name(json_object *obj, room_t *room)
 	room->name = name;
 	return 0;
 }
-int apply_room_topic(json_object *obj, room_t *room)
+int apply_room_topic(json_object *obj, roomevent_meta_t *meta, room_t *room)
 {
 	int err;
 	char *topic;
@@ -326,76 +365,272 @@ int apply_room_topic(json_object *obj, room_t *room)
 	return 0;
 }
 
-int apply_statevent(json_object *obj, room_t *room)
+int apply_statevent(event_type_t type, roomevent_meta_t *meta, json_object *obj, room_t *room)
 {
 	int err;
-	event_type_t type = EVENT_TYPE_NUM;
-	if ((err = get_object_as_enum(obj, "type", (int *)&type, EVENT_TYPE_NUM, event_type_strs))) {
+	if ((err = get_object_as_string(obj, "state_key", &meta->statekey))) {
 		return err;
 	}
 
 	json_object *content;
 	json_object_object_get_ex(obj, "content", &content);
-	if (!content)
-		return err;
+	if (!content) {
+		free(meta->statekey);
+		return 1;
+	}
 
 	switch (type) {
 	case M_ROOM_CREATE:
-		apply_room_create(content, room);
+		err = apply_room_create(content, meta, room);
 		break;
 	case M_ROOM_MEMBER:
-		apply_room_member(content, room);
+		err = apply_room_member(content, meta, room);
 		break;
 	case M_ROOM_POWERLEVELS:
-		apply_room_powerlevels(content, room);
+		err = apply_room_powerlevels(content, meta, room);
 		break;
 	case M_ROOM_JOINRULES:
-		apply_room_joinrules(content, room);
+		err = apply_room_joinrules(content, meta, room);
 		break;
 	case M_ROOM_HISTORY_VISIBILITY:
-		apply_room_history_visibility(content, room);
+		err = apply_room_history_visibility(content, meta, room);
 		break;
 	case M_ROOM_NAME:
-		apply_room_name(content, room);
+		err = apply_room_name(content, meta, room);
 		break;
 	case M_ROOM_TOPIC:
-		apply_room_topic(content, room);
+		err = apply_room_topic(content, meta, room);
 		break;
 	default:
 		assert(0);
 	}
+	if (err) {
+		free(meta->statekey);
+		return err;
+	}
+
 	return 0;
 }
-int apply_event_list(json_object *obj, room_t *room)
+
+/* message events */
+int get_room_message_text(json_object *obj, msg_text_t **msg)
+{
+	msg_text_t *m = malloc(sizeof(*m));
+	if (!m)
+		return -1;
+	m->format = NULL;
+	m->fmtbody = NULL;
+
+
+	int err;
+	if ((err = get_object_as_string(obj, "format", &m->format)) == -1) {
+		free(m);
+		return err;
+	}
+
+	if ((err = get_object_as_string(obj, "formatted_body", &m->fmtbody)) == -1) {
+		free(m->format);
+		free(m);
+		return err;
+	}
+
+	*msg = m;
+	return 0;
+}
+
+int apply_room_message(json_object *obj, roomevent_meta_t *meta, room_t *room)
+{
+	int err;
+	msg_type_t type = MSG_NUM;
+	if ((err = get_object_as_enum(obj, "msgtype", (int *)&type, MSG_NUM, msg_type_str)))
+		return err;
+
+	char *sender = strdup(meta->sender);
+	if (!sender)
+		return -1;
+
+	char *body;
+	if ((err = get_object_as_string(obj, "body", &body))) {
+		free(sender);
+		return err;
+	}
+
+	msg_t *m;
+	switch (type) {
+	case MSG_TEXT:;
+		msg_text_t *text;
+		if ((err = get_room_message_text(obj, &text)))
+			goto err_free;
+		m = &text->msg;
+		break;
+	default:
+		assert(0);
+	}
+
+	m->type = type;
+	m->sender = sender;
+	m->body = body;
+	list_add(&room->messages, &m->entry);
+	return 0;
+
+err_free:
+	free(body);
+	free(sender);
+	return err;
+}
+int apply_message_event(event_type_t type, roomevent_meta_t *meta, json_object *obj, room_t *room)
+{
+	json_object *content;
+	json_object_object_get_ex(obj, "content", &content);
+	if (!content)
+		return 1;
+
+	int err;
+	switch (type) {
+	case M_ROOM_REDACTION:
+		assert(0);
+		break;
+	case M_ROOM_MESSAGE:
+		err = apply_room_message(content, meta, room);
+		break;
+	default:
+		assert(0);
+	}
+
+	return err;
+}
+int apply_room_event(event_type_t type, json_object *obj, room_t *room, int stripped)
+{
+	roomevent_meta_t meta;
+	meta.id = NULL;
+	meta.transactid = NULL;
+
+	int err = get_object_as_string(obj, "event_id", &meta.id);
+	if (err == -1 || !stripped && err == 1)
+		return err;
+	
+	if ((err = get_object_as_string(obj, "sender", &meta.sender))) {
+		free(meta.id);
+		return err;
+	}
+
+	int64_t ts = 0;
+	err = get_object_as_int64(obj, "origin_server_ts", &ts);
+	if (err == -1 || !stripped && err == 1) {
+		free(meta.sender);
+		free(meta.id);
+		return err;
+	}
+	meta.ts = ts;
+
+	json_object *usigned;
+	json_object_object_get_ex(obj, "unsigned", &usigned);
+	if (usigned) {
+		int64_t age;
+		if ((err = get_object_as_int64(usigned, "age", &age)) == -1) {
+			free(meta.sender);
+			free(meta.id);
+			return err;
+		}
+		meta.age = age;
+
+		if ((err = get_object_as_string(usigned, "transaction_id", &meta.transactid)) == -1) {
+			free(meta.sender);
+			free(meta.id);
+			return err;
+		}
+	}
+
+	if (type >= M_ROOM_CREATE && type <= M_ROOM_HISTORY_VISIBILITY) {
+		err = apply_statevent(type, &meta, obj, room);
+	} else if (type >= M_ROOM_REDACTION && type <= M_ROOM_MESSAGE) {
+		err = apply_message_event(type, &meta, obj, room);
+	} else {
+		assert(0);
+	}
+
+	free(meta.transactid);
+	free(meta.sender);
+	free(meta.id);
+	return err;
+}
+
+int apply_event(json_object *obj, room_t *room, int stripped)
+{
+	int err;
+	event_type_t type = EVENT_TYPE_NUM;
+	if ((err = get_object_as_enum(obj, "type", (int *)&type,
+					EVENT_TYPE_NUM, event_type_strs))) {
+		return err;
+	}
+
+	if (type >= M_ROOM_CREATE && type <= M_ROOM_MESSAGE) {
+		err = apply_room_event(type, obj, room, stripped);
+	} else {
+		assert(0);
+	}
+	return err;
+}
+int apply_event_list(json_object *obj, room_t *room, int stripped)
 {
 	int err;
 	size_t nevents = json_object_array_length(obj);
 	for (size_t i = 0; i < nevents; ++i) {
 		json_object *evobj = json_object_array_get_idx(obj, i);
-		if ((err = apply_statevent(evobj, room)))
+		if ((err = apply_event(evobj, room, stripped)))
 			return err;
 	}
 	return 0;
 }
+
 int apply_timeline(json_object *obj, room_t *room)
 {
 	int err;
 	json_object *events;
 	json_object_object_get_ex(obj, "events", &events);
 	if (events) {
-		if ((err = apply_event_list(events, room)))
+		if ((err = apply_event_list(events, room, 0)))
+			return err;
+	}
+	return 0;
+}
+int apply_room_update_join(json_object *obj, room_t *room)
+{
+	int err;
+	json_object *state;
+	json_object_object_get_ex(obj, "state", &state);
+	if (state) {
+		if ((err = apply_timeline(state, room)))
+			return err;
+	}
+
+	json_object *timeline;
+	json_object_object_get_ex(obj, "timeline", &timeline);
+	if (timeline) {
+		if ((err = apply_timeline(timeline, room)))
 			return err;
 	}
 	return 0;
 }
 
-int apply_room_update_join(json_object *obj, room_t *room)
+int apply_invite_state(json_object *obj, room_t *room)
 {
 	int err;
-	json_object *timeline;
-	json_object_object_get_ex(obj, "timeline", &timeline);
-	if (timeline) {
-		if ((err = apply_timeline(timeline, room)))
+	json_object *events;
+	json_object_object_get_ex(obj, "events", &events);
+	if (events) {
+		if ((err = apply_event_list(events, room, 1)))
+			return err;
+	}
+	return 0;
+}
+int apply_room_update_invite(json_object *obj, room_t *room)
+{
+	int err;
+	json_object *state;
+	json_object_object_get_ex(obj, "invite_state", &state);
+	if (state) {
+		if ((err = apply_invite_state(state, room)))
 			return err;
 	}
 	return 0;
@@ -407,7 +642,7 @@ int __apply_room_updates(json_object *obj, listentry_t *rooms,
 	json_object_object_foreach(obj, key, val) {
 		room_t *target = NULL;
 		for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
-			room_t *room = LIST_ENTRY(e, room_t, entry);
+			room_t *room = list_entry(e, room_t, entry);
 			if (strcmp(room->id, key) == 0) {
 				target = room;
 				break;
@@ -441,11 +676,12 @@ int apply_room_updates(json_object *obj, listentry_t *joinedrooms,
 			return err;
 	}
 
-	//json_object *invite;
-	//json_object_object_get_ex(obj, "invite", &invite);
-	//if (invite) {
-	//	assert(0);
-	//}
+	json_object *invite;
+	json_object_object_get_ex(obj, "invite", &invite);
+	if (invite) {
+		if ((err = __apply_room_updates(invite, invitedrooms, apply_room_update_invite)))
+			return err;
+	}
 
 	//json_object *leave;
 	//json_object_object_get_ex(obj, "leave", &leave);
@@ -456,7 +692,7 @@ int apply_room_updates(json_object *obj, listentry_t *joinedrooms,
 	return 0;
 }
 
-int apply_state_updates(json_object *obj, listentry_t *joinedrooms,
+int apply_sync_state_updates(json_object *obj, listentry_t *joinedrooms,
 		listentry_t *invitedrooms, listentry_t *leftrooms)
 {
 	int err;

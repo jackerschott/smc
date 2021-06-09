@@ -43,6 +43,33 @@ void list_add_head(listentry_t *head, listentry_t *e)
 {
 	__list_add(head, head->next, e);
 }
+void list_replace(struct listentry_t *old, struct listentry_t *new)
+{
+        new->next = old->next;
+        new->next->prev = new;
+        new->prev = old->prev;
+        new->prev->next = new;
+}
+
+size_t list_length(listentry_t *head)
+{
+	size_t l = 0;
+	listentry_t *e = head;
+	while ((e = e->next) != head) {
+		++l;
+	}
+	return l;
+}
+void list_entry_at(listentry_t *head, size_t idx, listentry_t **entry)
+{
+	size_t i = 0;
+	listentry_t *e = head->next;
+	while (i < idx && e != head) {
+		++i;
+		e = e->next;
+	}
+	*entry = e;
+}
 
 int list_empty(listentry_t *head)
 {

@@ -4,10 +4,10 @@
 #include "json-c/json.h"
 #include "state.h"
 
-#define PARAM_BUFSIZE 2048U
+#define API_PARAM_BUFSIZE 2048U
 
-#define MERROR_BUFSIZE 40U
-#define ERRORMSG_BUFSIZE 256U
+#define API_MERROR_BUFSIZE 40U
+#define API_ERRORMSG_BUFSIZE 256U
 typedef enum {
 	M_SUCCESS, /* not part of the spec */
 	M_FORBIDDEN,
@@ -80,10 +80,9 @@ static const char *merrorstr[] = {
 	"M_CANNOT_LEAVE_SERVER_NOTICE_ROOM",
 };
 
-extern int lastcode;
-extern merror_t lasterr;
-extern char lasterrmsg[ERRORMSG_BUFSIZE];
-
+extern int api_last_code;
+extern merror_t api_last_err;
+extern char api_last_errmsg[API_ERRORMSG_BUFSIZE];
 
 int api_init(void);
 void api_cleanup(void);
@@ -97,5 +96,10 @@ int api_room_leave(const char *id);
 int api_room_forget(const char *id);
 int api_room_list_joined(char ***joinedrooms, size_t *nrooms);
 int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *leftrooms);
+
+int api_send_msg(const char *roomid, msg_t *msg, char **evid);
+
+int api_invite(const char *roomid, const char *userid);
+int api_join(const char *roomid);
 
 #endif /* API_H */
