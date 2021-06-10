@@ -52,6 +52,7 @@ struct respbuf_t {
 typedef struct respbuf_t respbuf_t;
 
 char *accesstoken;
+char *nextbatch;
 
 int api_last_code;
 merror_t api_last_err;
@@ -101,6 +102,9 @@ static void generate_transaction_id(char *s)
 
 int api_init(void)
 {
+	accesstoken = NULL;
+	nextbatch = NULL;
+
 	CURLcode err = curl_global_init(CURL_GLOBAL_SSL);
 	if (err)
 		return 1;
@@ -112,7 +116,6 @@ int api_init(void)
 	}
 
 	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, hrecv);
-	//curl_easy_setopt(handle, CURLOPT_READFUNCTION, hsend);
 	curl_easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, 0); /* for testing */
 	curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 0); /* for testing */
 	//curl_easy_setopt(handle, CURLOPT_VERBOSE, 1); /* for testing */
@@ -121,9 +124,11 @@ int api_init(void)
 }
 void api_cleanup(void)
 {
-	free(accesstoken);
 	curl_easy_cleanup(handle);
 	curl_global_cleanup();
+
+	free(nextbatch);
+	free(accesstoken);
 }
 
 int api_call(const char *request, const char *target, const char *urlparams,
@@ -392,6 +397,11 @@ int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *l
 	char urlparams[URL_BUFSIZE];
 	strcpy(urlparams, "access_token=");
 	strcat(urlparams, accesstoken);
+	
+	if (nextbatch) {
+		strcat(urlparams, "&since=");
+		strcat(urlparams, nextbatch);
+	}
 
 	int code;
 	json_object *resp = json_object_new_object();
@@ -401,7 +411,9 @@ int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *l
 		return err;
 	}
 
-	if ((err = apply_sync_state_updates(resp, joinedrooms, invitedrooms, leftrooms))) {
+	free(nextbatch);
+	if ((err = apply_sync_state_updates(resp, joinedrooms, invitedrooms,
+					leftrooms, &nextbatch))) {
 		json_object_put(resp);
 		return err;
 	}

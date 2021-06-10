@@ -693,7 +693,7 @@ int apply_room_updates(json_object *obj, listentry_t *joinedrooms,
 }
 
 int apply_sync_state_updates(json_object *obj, listentry_t *joinedrooms,
-		listentry_t *invitedrooms, listentry_t *leftrooms)
+		listentry_t *invitedrooms, listentry_t *leftrooms, char **nextbatch)
 {
 	int err;
 	json_object *roomupdates;
@@ -703,5 +703,8 @@ int apply_sync_state_updates(json_object *obj, listentry_t *joinedrooms,
 			return err;
 	}
 
+	if ((err = get_object_as_string(obj, "next_batch", nextbatch))) {
+		return err;
+	}
 	return 0;
 }

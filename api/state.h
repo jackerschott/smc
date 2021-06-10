@@ -139,6 +139,6 @@ static const char *msg_type_str[] = {
 void free_room(room_t *room);
 
 int apply_sync_state_updates(json_object *obj, listentry_t *joinedrooms,
-		listentry_t *invitedrooms, listentry_t *leftrooms);
+		listentry_t *invitedrooms, listentry_t *leftrooms, char **nextbatch);
 
 #endif /* STATE_H */

@@ -27,7 +27,14 @@ static char * room_type_names[] = {
 	"Left Rooms",
 };
 
-void open_selected_room(void)
+static int update(void)
+{
+	if (api_sync(&rooms[ROOMTYPE_JOINED], &rooms[ROOMTYPE_INVITED], &rooms[ROOMTYPE_LEFT]))
+		return 1;
+	return 0;
+}
+
+static void open_selected_room(void)
 {
 	if (room_nums[seltype] == 0)
 		return;
@@ -45,7 +52,7 @@ void open_selected_room(void)
 	room_menu_clear();
 	room_draw();
 }
-int join_selected_room(void)
+static int join_selected_room(void)
 {
 	if (room_nums[seltype] == 0)
 		return 0;
@@ -66,9 +73,11 @@ int join_selected_room(void)
 		return 1;
 	}
 
+	update();
+	room_menu_draw();
 	return 0;
 }
-void move_selection(int delta)
+static void move_selection(int delta)
 {
 	size_t n = room_nums[seltype];
 	if (n == 0)
@@ -85,7 +94,7 @@ void move_selection(int delta)
 
 	room_selidxs[seltype] = i;
 }
-void change_selected_type(room_type_t newtype)
+static void change_selected_type(room_type_t newtype)
 {
 	if (room_nums[newtype] == 0)
 		return;
@@ -109,10 +118,7 @@ int room_menu_init(void)
 	list_init(&rooms[ROOMTYPE_JOINED]);
 	list_init(&rooms[ROOMTYPE_INVITED]);
 	list_init(&rooms[ROOMTYPE_LEFT]);
-	if (api_sync(&rooms[ROOMTYPE_JOINED], &rooms[ROOMTYPE_INVITED], &rooms[ROOMTYPE_LEFT])) {
-		fprintf(stderr, "%s: could not synchronize state with server\n", __func__);
-		return 1;
-	}
+	update();
 
 	seltype = ROOMTYPE_JOINED;
 	memset(room_selidxs, 0, sizeof(room_nums));
@@ -162,6 +168,9 @@ void room_menu_cleanup(void)
 
 void room_menu_draw(void)
 {
+	clear();
+	refresh();
+
 	for (room_type_t t = ROOMTYPE_JOINED; t < ROOMTYPE_NUM; ++t) {
 		WINDOW *w = room_wins[t];
 		wmove(w, 0, 0);
