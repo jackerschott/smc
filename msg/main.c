@@ -37,10 +37,10 @@
 struct {
 	char *username;
 	char *pass;
+	char *name;
 } options;
 
-
-#define TOKEN_FILE_PATH (CONFIG_DIR "accesstoken_bob")
+#define TOKEN_FILE_PATH (CONFIG_DIR "accesstoken")
 #define HREAD_BUFSIZE 1024U
 
 static int hread(int fd, char **buf, size_t *size)
@@ -77,7 +77,7 @@ static int hread(int fd, char **buf, size_t *size)
 }
 static int save_token(char *token)
 {
-	int ftoken = open(TOKEN_FILE_PATH, O_CREAT | O_WRONLY, 0600);
+	int ftoken = open(TOKEN_FILE_PATH, O_CREAT | O_WRONLY | O_TRUNC, 0600);
 	if (ftoken == -1)
 		return 1;
 
@@ -116,22 +116,22 @@ static int get_token(char **token)
 
 static int ensure_login(void)
 {
+	int err;
 	char *token = NULL;
-	int err = get_token(&token);
-	if (err == -1) {
-		fprintf(stderr, "%s: could not check token file\n", __func__);
-		return 1;
-	} else if (err == 1) {
-		if (!options.username || !options.pass) {
+	if (!options.username || !options.pass) {
+		err = get_token(&token);
+		if (err == -1) {
+			fprintf(stderr, "%s: could not check token file\n", __func__);
+			return 1;
+		} else if (err == 1) {
 			printf("unable to login: no username or password supplied\n");
 			free(token);
-			return 2;
+			return 1;
 		}
-
+	} else if (options.username && options.pass) {
 		err = api_login(options.username, options.pass, NULL, &token, NULL, NULL);
 		if (err == -1) {
 			fprintf(stderr, "%s: login failed\n", __func__);
-			free(token);
 			return 1;
 		} else if (err == 1) {
 			fprintf(stderr, "%s: login failed, %s (%i)\n",
@@ -145,6 +145,9 @@ static int ensure_login(void)
 			free(token);
 			return 1;
 		}
+	} else {
+		printf("unable to login: both username and password have to be supplied\n");
+		return 1;
 	}
 
 	if (api_set_access_token(token)) {
@@ -162,7 +165,7 @@ int parse_options(int argc, char *const argv[])
 	options.pass = NULL;
 
 	int ret = 0;
-	const char *optstr = ":u:p:";
+	const char *optstr = ":u:p:n:";
 	for (int c = getopt(argc, argv, optstr); c != -1; c = getopt(argc, argv, optstr)) {
 		if (c == ':') {
 			printf("missing argument to '-%c'\n", optopt);
