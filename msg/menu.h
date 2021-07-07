@@ -7,7 +7,7 @@
 
 int room_menu_init(void);
 void room_menu_cleanup(void);
-void room_menu_draw(void);
+int room_menu_draw(void);
 void room_menu_clear(void);
 
 int room_menu_handle_key(int c, uimode_t *newmode);

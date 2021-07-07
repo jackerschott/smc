@@ -17,23 +17,6 @@
 #include "state.h"
 #include "ui.h"
 
-//static const char *writers[] = {
-//	"valkyrie",
-//	"skulduggery",
-//	"valkyrie",
-//	"valkyrie",
-//	"skulduggery",
-//	"skulduggery",
-//};
-//static const char *dialogue[] = {
-//	"I almost died there!",
-//	"Well you didn't. Everything was under control.",
-//	"Nothing was under control!",
-//	"There are million things that could've happened. You could've slipped.",
-//	"I wouldn't have slipped!",
-//	"My movements are far to gracefully for that",
-//};
-
 struct {
 	char *username;
 	char *pass;
