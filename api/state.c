@@ -3,8 +3,9 @@
 #include <string.h>
 #include <stdio.h>
 
-#include "state.h"
-#include "hjson.h"
+#include "api/state.h"
+#include "lib/hjson.h"
+#include "msg/smc.h"
 
 typedef enum {
 	/* roomevents */
@@ -66,9 +67,25 @@ void free_powerlevel(powerlevel_t *powerlevel)
 	free(powerlevel->name);
 	free(powerlevel);
 }
+void free_msg_text(msg_text_t *msg)
+{
+	free(msg->fmtbody);
+	free(msg->format);
+	free(msg);
+}
 void free_msg(msg_t *msg)
 {
+	free(msg->sender);
+	free(msg->body);
 
+	switch (msg->type) {
+	case MSG_TEXT:;
+		msg_text_t *m = CONTAINER(msg, msg_text_t, msg);
+		free_msg_text(m);
+		break;
+	default:
+		assert(0);
+	}
 }
 
 int get_new_room(const char *roomid, room_t **room)
@@ -134,6 +151,7 @@ void free_room(room_t *room)
 	free(room->topic);
 	free(room->name);
 	free(room->id);
+	free(room);
 }
 
 int apply_powerlevel_table(json_object *obj, listentry_t *levels)
@@ -273,7 +291,7 @@ int apply_room_member(json_object *obj, roomevent_meta_t *meta, room_t *room)
 		member_t *m = list_entry(e, member_t, entry);
 		if (strcmp(m->userid, member->userid) == 0) {
 			list_replace(&m->entry, &member->entry);
-			free(m);
+			free_member(m);
 			overwritten = 1;
 			break;
 		}
@@ -409,6 +427,7 @@ int apply_statevent(event_type_t type, roomevent_meta_t *meta, json_object *obj,
 		return err;
 	}
 
+	free(meta->statekey);
 	return 0;
 }
 

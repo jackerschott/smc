@@ -7,28 +7,31 @@ src_msg = files([
 	'msg/main.c',
 	'msg/menu.c',
 	'msg/room.c',
+	'msg/sync.c',
 	'msg/inputline.c',
 	'msg/command.c',
 	'api/api.c',
-	'api/hjson.c',
 	'api/state.c',
-	'api/list.c',
+	'lib/hjson.c',
+	'lib/list.c',
+	'lib/htermbox.c'
 ])
 src_rooms = files([
 	'rooms/main.c',
 	'api/api.c',
-	'api/hjson.c',
 	'api/state.c',
-	'api/list.c',
+	'lib/hjson.c',
+	'lib/list.c',
 ])
-inc = include_directories('api', 'msg')
+inc = include_directories('.')
 
 dep_jsonc = dependency('json-c')
 dep_curl = dependency('libcurl')
-dep_ncurses = dependency('ncurses')
+dep_termbox = dependency('termbox')
 dep_readline = dependency('readline')
+dep_threads = dependency('threads')
 
 executable('mtxmsg', src_msg, include_directories : inc,
-	dependencies : [dep_jsonc, dep_curl, dep_ncurses, dep_readline])
-executable('mtxrooms', src_rooms, include_directories : inc,
-	dependencies : [dep_jsonc, dep_curl])
+	dependencies : [dep_jsonc, dep_curl, dep_termbox, dep_readline, dep_threads])
+#executable('mtxrooms', src_rooms, include_directories : inc,
+#	dependencies : [dep_jsonc, dep_curl])

@@ -26,10 +26,10 @@
 #include <curl/curl.h>
 #include <json-c/json.h>
 
-#include "api.h"
-#include "hjson.h"
-#include "smc.h"
-#include "state.h"
+#include "api/api.h"
+#include "api/state.h"
+#include "lib/hjson.h"
+#include "msg/smc.h"
 
 #define CURLERR(code) do { \
 	fprintf(stderr, "%s:%d/%s: ", __FILE__, __LINE__, __func__); \
@@ -44,12 +44,11 @@
 CURL *handle;
 const char *baseurl = "https://localhost:8080";
 
-struct respbuf_t {
+typedef struct {
 	size_t size;
 	size_t len;
 	char *data;
-};
-typedef struct respbuf_t respbuf_t;
+} respbuf_t;
 
 char *accesstoken;
 char *nextbatch;
@@ -175,6 +174,7 @@ int api_call(const char *request, const char *target, const char *urlparams,
 		return -1;
 	}
 	curl_slist_free_all(header);
+	respbuf.data[respbuf.len] = 0;
 
 	int c;
 	curl_easy_getinfo(handle, CURLINFO_RESPONSE_CODE, &c);
@@ -219,7 +219,7 @@ int api_login(const char *username, const char *pass,
 	json_object_object_add(data, "password", json_object_new_string(pass));
 
 	int code;
-	json_object *resp = json_object_new_object();
+	json_object *resp;
 	int err = api_call("POST", "/_matrix/client/r0/login", NULL, data, &code, &resp);
 	if (err) {
 		json_object_put(data);
@@ -273,7 +273,7 @@ int api_room_create(const char *clientid, const char *name, const char *alias,
 	strcat(urlparams, accesstoken);
 
 	int code;
-	json_object *resp = json_object_new_object();
+	json_object *resp;
 	int err = api_call("POST", "/_matrix/client/r0/createRoom", urlparams, data, &code, &resp);
 	if (err) {
 		json_object_put(data);
@@ -307,7 +307,7 @@ int api_room_leave(const char *id)
 	strcat(urlparams, accesstoken);
 
 	int code;
-	json_object *resp = json_object_new_object();
+	json_object *resp;
 	int err = api_call("POST", target, urlparams, NULL, &code, &resp);
 	if (err) {
 		json_object_put(resp);
@@ -331,7 +331,7 @@ int api_room_forget(const char *id)
 	strcat(urlparams, accesstoken);
 
 	int code;
-	json_object *resp = json_object_new_object();
+	json_object *resp;
 	int err = api_call("POST", target, urlparams, NULL, &code, &resp);
 	if (err) {
 		json_object_put(resp);
@@ -350,7 +350,7 @@ int api_room_list_joined(char ***roomids, size_t *nroomids)
 	strcat(urlparams, accesstoken);
 
 	int code;
-	json_object *resp = json_object_new_object();
+	json_object *resp;
 	int err = api_call("GET", "/_matrix/client/r0/joined_rooms", urlparams, NULL, &code, &resp);
 	if (err) {
 		json_object_put(resp);
@@ -404,7 +404,7 @@ int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *l
 	}
 
 	int code;
-	json_object *resp = json_object_new_object();
+	json_object *resp;
 	int err = api_call("GET", "/_matrix/client/r0/sync", urlparams, NULL, &code, &resp);
 	if (err) {
 		json_object_put(resp);
@@ -441,7 +441,7 @@ int api_send(const char *roomid, const char* evtype,  json_object *event, char *
 	strcat(urlparams, accesstoken);
 
 	int code;
-	json_object *resp = json_object_new_object();
+	json_object *resp;
 	int err = api_call("PUT", target, urlparams, event, &code, &resp);
 	if (err) {
 		json_object_put(resp);

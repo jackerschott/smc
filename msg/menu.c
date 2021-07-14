@@ -3,56 +3,36 @@
 #include <string.h>
 #include <unistd.h>
 
-#include <ncurses.h>
-
-#include "api.h"
-#include "inputline.h"
-#include "menu.h"
-#include "room.h"
-#include "hcurs.h"
+#include "api/api.h"
+#include "lib/htermbox.h"
+#include "msg/inputline.h"
+#include "msg/menu.h"
+#include "msg/room.h"
+#include "msg/sync.h"
 
 typedef struct {
-	WINDOW *win;
-	int y;
-	int x;
-	int height;
-	int width;
+	tb_win_t win;
 
 	size_t nrooms;
 	ssize_t selid;
 } menu_win_t;
 
-typedef enum {
-	ROOMTYPE_JOINED,
-	ROOMTYPE_INVITED,
-	ROOMTYPE_LEFT,
-	ROOMTYPE_NUM,
-} room_type_t;
-
 room_type_t seltype;
-listentry_t rooms[ROOMTYPE_NUM];
 
-menu_win_t room_wins[ROOMTYPE_NUM];
+menu_win_t menu_wins[ROOMTYPE_NUM];
 static char * room_type_names[] = {
 	"Joined Rooms",
 	"Invited Rooms",
 	"Left Rooms",
 };
 
-static int update(void)
-{
-	if (api_sync(&rooms[ROOMTYPE_JOINED], &rooms[ROOMTYPE_INVITED], &rooms[ROOMTYPE_LEFT]))
-		return 1;
-	return 0;
-}
-
 static void open_selected_room(void)
 {
-	if (room_wins[seltype].nrooms == 0)
+	if (menu_wins[seltype].nrooms == 0)
 		return;
 
-	listentry_t head = rooms[seltype];
-	size_t i = room_wins[seltype].selid;
+	listentry_t head = smc_rooms[seltype];
+	size_t i = menu_wins[seltype].selid;
 
 	listentry_t *e;
 	list_entry_at(&head, i, &e);
@@ -66,11 +46,11 @@ static void open_selected_room(void)
 }
 static int join_selected_room(void)
 {
-	if (room_wins[seltype].nrooms == 0)
+	if (menu_wins[seltype].nrooms == 0)
 		return 0;
 
-	listentry_t head = rooms[seltype];
-	size_t i = room_wins[seltype].selid;
+	listentry_t head = smc_rooms[seltype];
+	size_t i = menu_wins[seltype].selid;
 
 	listentry_t *e;
 	list_entry_at(&head, i, &e);
@@ -85,250 +65,197 @@ static int join_selected_room(void)
 		return 1;
 	}
 
-	update();
 	room_menu_draw();
 	return 0;
 }
 static void move_selection(int delta)
 {
-	size_t n = room_wins[seltype].nrooms;
+	size_t n = menu_wins[seltype].nrooms;
 	if (n == 0)
 		return;
 
-	size_t i = CLAMP(room_wins[seltype].selid + delta, 0, n-1);
+	size_t i = CLAMP(menu_wins[seltype].selid + delta, 0, n-1);
 
-	WINDOW *selwin = room_wins[seltype].win;
-	wchgat(selwin, -1, 0, 0, NULL);
-	wmove(selwin, i + 1, 0);
-	wchgat(selwin, -1, A_REVERSE, 0, NULL);
+	tb_win_t selwin = menu_wins[seltype].win;
+	tb_chattr(&selwin, tb_width(), 1, TB_DEFAULT, TB_DEFAULT);
+	tb_wmove(&selwin, 0, i + 1);
+	tb_chattr(&selwin, tb_width(), 1, TB_DEFAULT, TB_REVERSE);
+	tb_present();
 
-	wrefresh(selwin);
-
-	room_wins[seltype].selid = i;
+	menu_wins[seltype].selid = i;
 }
 static void change_selected_type(room_type_t newtype)
 {
-	if (room_wins[newtype].nrooms == 0)
+	if (menu_wins[newtype].nrooms == 0)
 		return;
 
-	WINDOW *oldwin = room_wins[seltype].win;
-	WINDOW *newwin = room_wins[newtype].win;
+	tb_win_t oldwin = menu_wins[seltype].win;
+	tb_win_t newwin = menu_wins[newtype].win;
+	size_t i = menu_wins[newtype].selid;
 
-	wchgat(oldwin, -1, 0, 0, NULL);
-	wrefresh(oldwin);
-
-	size_t i = room_wins[newtype].selid;
-	wmove(newwin, i + 1, 0);
-	wchgat(newwin, -1, A_REVERSE, 0, NULL);
-	wrefresh(newwin);
+	tb_chattr(&oldwin, tb_width(), 1, TB_DEFAULT, TB_DEFAULT);
+	tb_wmove(&newwin, 0, i + 1);
+	tb_chattr(&newwin, tb_width(), 1, TB_DEFAULT, TB_REVERSE);
+	tb_present();
 
 	seltype = newtype;
 }
 
-static int window_line_print(const menu_win_t *w, attr_t attr, const char *fmt, ...)
+static void calc_windows()
 {
-	va_list args;
+	int winoff = 0;
+	for (room_type_t t = ROOMTYPE_JOINED; t < ROOMTYPE_NUM; ++t) {
+		size_t nrooms = list_length(&smc_rooms[t]);
 
-	int y, x;
-	getyx(w->win, y, x);
-	size_t maxlen = w->width - x;
+		tb_win_t win;
+		win.x = 0;
+		win.y = winoff;
+		win.height = MIN(nrooms + 2, tb_height() - win.y);
+		win.width = tb_width();
+		win.wrap = 0;
 
-	char *s = malloc(maxlen + 1);
-	if (!s)
-		return -1;
+		menu_wins[t].win = win;
+		menu_wins[t].nrooms = nrooms;
 
-	va_start(args, fmt);
-	size_t n = vsnprintf(s, maxlen + 1, fmt, args);
-	va_end(args);
-	assert(strlen(s) <= maxlen);
-
-	size_t slen = strlen(s);
-	chtype *chstr = malloc((slen + 1) * sizeof(*chstr));
-	if (!chstr) {
-		free(s);
-		return -1;
+		winoff += win.height;
 	}
+}
 
-	for (size_t i = 0; i < slen; ++i) {
-		chstr[i] = s[i] | attr;
-	}
-	free(s);
-	chstr[slen] = 0;
-
-	assert(!waddchnstr(w->win, chstr, maxlen));
-	free(chstr);
-
-	x += slen;
-	if (x > w->width - 1) {
-		wmove(w->win, y, w->width - 1);
-		wrefresh(w->win);
+int draw_menu_window(tb_win_t *win, char *name, listentry_t *rooms)
+{
+	if (win->width == 0 || win->height == 0)
 		return 1;
-	} else {
-		wmove(w->win, y, x);
-		wrefresh(w->win);
-		return 0;
+
+	tb_wmove(win, 0, 0);
+
+	int err = 0;
+	if ((err = tb_printf(win, TB_DEFAULT | TB_BOLD, TB_DEFAULT, "%s\n", name)))
+		return err;
+
+	for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
+		room_t *r = list_entry(e, room_t, entry);
+		
+		if ((err = tb_printf(win, TB_DEFAULT, TB_DEFAULT, "%s   ", r->name)))
+			return err;
+		if ((err = tb_printf(win, TB_DEFAULT, TB_DEFAULT, "%s   %s\n", r->topic, r->id)))
+			return err;
 	}
+
+	return 0;
 }
 
 int room_menu_init(void)
 {
-	list_init(&rooms[ROOMTYPE_JOINED]);
-	list_init(&rooms[ROOMTYPE_INVITED]);
-	list_init(&rooms[ROOMTYPE_LEFT]);
-
-	int err;
-	if ((err = update()))
-		goto err_free_rooms;
+	list_init(&smc_rooms[ROOMTYPE_JOINED]);
+	list_init(&smc_rooms[ROOMTYPE_INVITED]);
+	list_init(&smc_rooms[ROOMTYPE_LEFT]);
 
 	seltype = ROOMTYPE_JOINED;
-
-	int winoff = 0;
 	for (room_type_t t = ROOMTYPE_JOINED; t < ROOMTYPE_NUM; ++t) {
-		size_t nrooms = list_length(&rooms[t]);
-
-		int y = winoff;
-		int x = 0;
-		int height = nrooms + 2;
-		int width = COLS;
-
-		WINDOW *win;
-		if (!(win = newwin(height, width, winoff, x))) {
-			err = -1;
-			goto err_free_wins;
-		}
-
-		room_wins[t].win = win;
-		room_wins[t].y = y;
-		room_wins[t].x = x;
-		room_wins[t].height = height;
-		room_wins[t].width = width;
-		room_wins[t].nrooms = nrooms;
-		room_wins[t].selid = 0;
-		
-		winoff += height;
+		menu_wins[t].selid = 0;
 	}
 
-	if ((err = input_line_init()))
-		goto err_free_wins;
-
+	input_line_init();
 	return 0;
 
-err_free_wins:
-	for (room_type_t t = ROOMTYPE_JOINED; t < ROOMTYPE_NUM; ++t) {
-		delwin(room_wins[t].win);
-	}
-
-err_free_rooms:
-	list_free(&rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-	list_free(&rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-	list_free(&rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
-	return err;
+//err_free_rooms:
+//	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
+//	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
+//	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
+//	return err;
 }
 void room_menu_cleanup(void)
 {
-	for (room_type_t t = ROOMTYPE_JOINED; t < ROOMTYPE_NUM; ++t) {
-		delwin(room_wins[t].win);
-	}
+	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
 
-	list_free(&rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-	list_free(&rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-	list_free(&rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
+	//do {
+	//	listentry_t *e = (&smc_rooms[ROOMTYPE_JOINED])->next;
+	//	while (e != (&smc_rooms[ROOMTYPE_JOINED])) {
+	//		listentry_t *next = e->next;
+	//		room_t *entry = list_entry(e, room_t, entry);
+	//		free_room(entry);
+	//		e = next;
+	//	}
+	//} while (0);
 }
 
-int room_menu_draw_menu_win(menu_win_t *mwin, char *name, listentry_t *rooms)
-{
-	if (mwin->width <= 0 || mwin->height <= 0)
-		return 1;
-
-	WINDOW *w = mwin->win;
-
-	wresize(w, mwin->height, mwin->width);
-	assert(mvwin(w, mwin->y, mwin->x) != ERR);
-
-	wmove(w, 0, 0);
-	if (window_line_print(mwin, A_BOLD, "%s", name))
-		return -1;
-
-	int y = gety(w);
-	wmove(w, ++y, 0);
-
-	for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
-		if (y >= mwin->height)
-			break;
-
-		room_t *r = list_entry(e, room_t, entry);
-		
-		if (window_line_print(mwin, A_NORMAL, "%s   ", r->name))
-			return -1;
-		if (window_line_print(mwin, A_NORMAL, "%s   %s", r->topic, r->id))
-			return -1;
-		wmove(w, ++y, 0);
-	}
-
-	wrefresh(w);
-	return 0;
-}
 int room_menu_draw(void)
 {
-	clear();
-	refresh();
+	tbh_clear();
+	calc_windows();
 
+	int err;
 	for (room_type_t t = ROOMTYPE_JOINED; t < ROOMTYPE_NUM; ++t) {
-		WINDOW *w = room_wins[t].win;
-		room_wins[t].height = MIN((int)room_wins[t].nrooms + 2, LINES - room_wins[t].y);
-		room_wins[t].width = COLS - room_wins[t].x;
-
-		room_menu_draw_menu_win(&room_wins[t], room_type_names[t], &rooms[t]);
+		if ((err = draw_menu_window(&menu_wins[t].win,
+						room_type_names[t], &smc_rooms[t]))) {
+			if (err == 1)
+				break;
+			return err;
+		}
 	}
 
-	menu_win_t selwin = room_wins[seltype];
-	WINDOW *w = selwin.win;
-	int i = selwin.selid;
-	if (selwin.nrooms > 0 && i < selwin.height - 1) {
-		wmove(w, i + 1, 0);
-		wchgat(w, -1, A_REVERSE, 0, NULL);
-		wrefresh(w);
+	int i = menu_wins[seltype].selid;
+	menu_win_t selwin = menu_wins[seltype];
+	if (selwin.nrooms > 0 && i < selwin.win.height - 1) {
+		tb_wmove(&selwin.win, 0, i + 1);
+		tb_chattr(&selwin.win, tb_width(), 1, TB_DEFAULT, TB_REVERSE);
 	}
 
+	if (input_line_is_active())
+		input_line_draw();
+
+	tb_present();
 	return 0;
 }
 void room_menu_clear(void)
 {
-	clear();
-	refresh();
+	tbh_clear();
+	tb_present();
 }
 
-int room_menu_handle_key(int c, uimode_t *newmode)
+int room_menu_handle_event(struct tb_event *ev, uimode_t *newmode)
 {
+	*newmode = MODE_ROOM_MENU;
+
 	int err = 0;
-	switch (c) {
-	case KEY_RESIZE:
+	if (ev->type == TB_EVENT_RESIZE) {
 		if ((err = room_menu_draw()))
 			assert(0);
+	} else if (ev->type == TB_EVENT_MOUSE) {
+		return 0;
+	}
+
+	switch (ev->ch) {
+	case 0:
 		break;
 	case 'j':
 		move_selection(1);
-		*newmode = MODE_ROOM_MENU;
-		break;
+		return err;
 	case 'k':;
 		move_selection(-1);
-		*newmode = MODE_ROOM_MENU;
-		break;
+		return err;
 	case 'a':
 		if (seltype != ROOMTYPE_INVITED)
-			break;
+			return err;
 
-		break;
+		return err;
 	case 'J':
 		change_selected_type(ROOMTYPE_JOINED);
-		break;
+		return err;
 	case 'I':
 		change_selected_type(ROOMTYPE_INVITED);
-		break;
+		return err;
 	case 'L':
 		change_selected_type(ROOMTYPE_LEFT);
-		break;
-	case '\n':
+		return err;
+	default:
+		return err;
+	}
+
+	switch (ev->key) {
+	case TB_KEY_ENTER:
 		if (seltype == ROOMTYPE_JOINED) {
 			open_selected_room();
 			*newmode = MODE_ROOM;
@@ -336,11 +263,12 @@ int room_menu_handle_key(int c, uimode_t *newmode)
 			err = join_selected_room();
 			*newmode = MODE_ROOM;
 		}
-		break;
+		return err;
 	default:
-		*newmode = MODE_ROOM;
-		break;
+		return err;
 	}
-
-	return err;
+}
+int room_menu_handle_sync(void)
+{
+	return room_menu_draw();
 }

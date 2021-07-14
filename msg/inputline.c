@@ -3,15 +3,14 @@
 #include <stdio.h> /* FILE */
 
 #include <readline/readline.h>
-#include <ncurses.h>
 
-#include "inputline.h"
-#include "smc.h"
+#include "msg/inputline.h"
+#include "msg/smc.h"
 
-WINDOW *inputwin;
+tb_win_t inputwin;
 
 int input_avail;
-char input;
+int input;
 int is_active;
 
 int line_handle_err;
@@ -34,11 +33,12 @@ void update_line(void)
 {
 	size_t xcur = strlen(rl_display_prompt) + rl_point;
 
-	werase(inputwin);
-	wmove(inputwin, 0, 0);
-	wprintw(inputwin, "%s%s", rl_display_prompt, rl_line_buffer);
-	wmove(inputwin, 0, xcur);
-	wrefresh(inputwin);
+	tb_werase(&inputwin);
+	tb_wmove(&inputwin, 0, 0);
+	tb_printf(&inputwin, TB_DEFAULT, TB_DEFAULT, "%s%s", rl_display_prompt, rl_line_buffer);
+	tb_wmove(&inputwin, xcur, 0);
+	tb_present();
+	tb_present_cursor();
 }
 void forward_line(char *line)
 {
@@ -54,12 +54,7 @@ void forward_line(char *line)
 
 void input_line_start(char *prompt, int (*handler)(char *))
 {
-	curs_set(1);
-	refresh();
-
-	wmove(inputwin, 0, 0);
-	wrefresh(inputwin);
-
+	tb_wmove(&inputwin, 0, 0);
 	rl_callback_handler_install(prompt, forward_line);
 
 	handle_line = handler;
@@ -69,23 +64,26 @@ void input_line_stop(void)
 {
 	rl_callback_handler_remove();
 
-	werase(inputwin);
-	wrefresh(inputwin);
-
-	curs_set(0);
-	refresh();
+	tb_werase(&inputwin);
+	tb_set_cursor(TB_HIDE_CURSOR, TB_HIDE_CURSOR);
+	tb_present();
 
 	is_active = 0;
 }
-int input_line_handle_key(int c)
+int input_line_handle_event(struct tb_event *ev)
 {
 	assert(is_active);
 
-	input = c;
-	input_avail = 1;
-	rl_callback_read_char();
+	if (ev->type == TB_EVENT_KEY) {
+		input = ev->ch ? ev->ch : tb_char(ev->key);
+		input_avail = 1;
+		rl_callback_read_char();
 
-	return line_handle_err;
+		return line_handle_err;
+	} else if (ev->type == TB_EVENT_RESIZE) {
+		input_line_draw();
+	}
+	return 0;
 }
 int input_line_is_active(void)
 {
@@ -95,21 +93,25 @@ int input_line_is_active(void)
 int input_line_print(const char *fmt, ...)
 {
 	va_list args;
-	
-	va_start(args, fmt);
-	vw_printw(inputwin, fmt, args);
-	va_end(args);
 
-	wrefresh(inputwin);
+	tb_wmove(&inputwin, 0, 0);
+	va_start(args, fmt);
+	tb_v_printf(&inputwin, TB_DEFAULT, TB_DEFAULT, fmt, args);
+	va_end(args);
+	tb_present();
 	return 0;
 }
 void input_line_clear(void)
 {
-	werase(inputwin);
-	wrefresh(inputwin);
+	tb_werase(&inputwin);
+	tb_present();
+}
+void input_line_draw(void)
+{
+	update_line();
 }
 
-int input_line_init(void)
+void input_line_init(void)
 {
 	/* initialize readline */
 	/* do not interfere with ncurses */
@@ -124,12 +126,13 @@ int input_line_init(void)
 	rl_input_available_hook = readline_input_avail;
 	rl_redisplay_function = update_line;
 
-	if (!(inputwin = newwin(1, COLS, LINES-1, 0)))
-		return -1;
-
-	return 0;
+	inputwin.x = 0;
+	inputwin.y = tb_height() - 1;
+	inputwin.width = tb_width();
+	inputwin.height = 1;
+	inputwin.wrap = 0;
 }
 void input_line_cleanup(void)
 {
-	delwin(inputwin);
+	/* empty for now */
 }

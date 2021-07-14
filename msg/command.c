@@ -3,8 +3,8 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "command.h"
-#include "list.h"
+#include "msg/command.h"
+#include "lib/list.h"
 
 #define ARGS_NUM_MAX 128
 

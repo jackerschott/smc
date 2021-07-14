@@ -1,14 +1,16 @@
 #ifndef ROOM_H
 #define ROOM_H
 
-#include "state.h"
-#include "ui.h"
+#include "api/state.h"
+#include "lib/htermbox.h"
+#include "msg/ui.h"
 
-int room_init(void);
+void room_init(void);
 void room_cleanup(void);
 
-void room_draw(void);
-int room_handle_key(int c, uimode_t *newmode);
+int room_draw(void);
+int room_handle_event(struct tb_event *ev, uimode_t *newmode);
+int room_handle_sync(void);
 
 void room_set_room(room_t *r);
 

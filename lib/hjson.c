@@ -1,7 +1,7 @@
 #include <assert.h>
 #include <string.h>
 
-#include "hjson.h"
+#include "lib/hjson.h"
 
 int get_object_as_int(const json_object *obj, const char *key, int32_t *i)
 {

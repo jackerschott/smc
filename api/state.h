@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <json-c/json_types.h>
 
-#include "list.h"
+#include "lib/list.h"
 
 typedef enum {
 	MEMBERSHIP_INVITE,

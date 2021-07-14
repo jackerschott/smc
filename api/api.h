@@ -2,7 +2,7 @@
 #define API_H
 
 #include "json-c/json.h"
-#include "state.h"
+#include "api/state.h"
 
 #define API_PARAM_BUFSIZE 2048U
 

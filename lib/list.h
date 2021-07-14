@@ -3,7 +3,7 @@
 
 #include <stddef.h>
 
-#include "smc.h"
+#include "msg/smc.h"
 
 /* circular doubly linked lists
    based on https://www.oreilly.com/library/view/linux-device-drivers/0596000081/ch10s05.html */

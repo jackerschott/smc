@@ -1,6 +1,10 @@
 #ifndef SMC_H
 #define SMC_H
 
+#include <stdio.h>
+
+#include <pthread.h>
+
 #include "errno.h"
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
@@ -22,5 +26,9 @@
 	((type *)((void *)(ptr) - OFFSET(type, member)))
 
 #define UNUSED(x) (void)(x)
+
+extern int smc_terminate;
+
+extern int flog;
 
 #endif /* SMC_H */
