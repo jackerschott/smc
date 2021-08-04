@@ -309,10 +309,8 @@ int api_room_leave(const char *id)
 	int code;
 	json_object *resp;
 	int err = api_call("POST", target, urlparams, NULL, &code, &resp);
-	if (err) {
-		json_object_put(resp);
+	if (err)
 		return err;
-	}
 
 	json_object_put(resp);
 	return 0;
@@ -333,10 +331,8 @@ int api_room_forget(const char *id)
 	int code;
 	json_object *resp;
 	int err = api_call("POST", target, urlparams, NULL, &code, &resp);
-	if (err) {
-		json_object_put(resp);
+	if (err)
 		return err;
-	}
 
 	json_object_put(resp);
 	return 0;
@@ -352,10 +348,8 @@ int api_room_list_joined(char ***roomids, size_t *nroomids)
 	int code;
 	json_object *resp;
 	int err = api_call("GET", "/_matrix/client/r0/joined_rooms", urlparams, NULL, &code, &resp);
-	if (err) {
-		json_object_put(resp);
+	if (err)
 		return err;
-	}
 
 	json_object *joinedroomsobj;
 	json_object_object_get_ex(resp, "joined_rooms", &joinedroomsobj);
@@ -406,10 +400,8 @@ int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *l
 	int code;
 	json_object *resp;
 	int err = api_call("GET", "/_matrix/client/r0/sync", urlparams, NULL, &code, &resp);
-	if (err) {
-		json_object_put(resp);
+	if (err)
 		return err;
-	}
 
 	free(nextbatch);
 	if ((err = apply_sync_state_updates(resp, joinedrooms, invitedrooms,
@@ -443,10 +435,8 @@ int api_send(const char *roomid, const char* evtype,  json_object *event, char *
 	int code;
 	json_object *resp;
 	int err = api_call("PUT", target, urlparams, event, &code, &resp);
-	if (err) {
-		json_object_put(resp);
+	if (err)
 		return err;
-	}
 
 	if ((err = get_object_as_string(resp, "event_id", evid))) {
 		json_object_put(resp);
@@ -493,7 +483,6 @@ int api_invite(const char *roomid, const char *userid)
 	json_object *resp;
 	int err = api_call("POST", target, urlparams, data, &code, &resp);
 	if (err) {
-		json_object_put(resp);
 		json_object_put(data);
 		return err;
 	}
@@ -517,10 +506,8 @@ int api_join(const char *roomid)
 	int code;
 	json_object *resp;
 	int err = api_call("POST", target, urlparams, NULL, &code, &resp);
-	if (err) {
-		json_object_put(resp);
+	if (err)
 		return err;
-	}
 
 	json_object_put(resp);
 	return 0;
