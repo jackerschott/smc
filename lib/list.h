@@ -25,7 +25,7 @@ void list_entry_at(listentry_t *head, size_t idx, listentry_t **entry);
 
 int list_empty(listentry_t *head);
 
-#define list_entry(ptr, type, member) \
+#define list_entry_content(ptr, type, member) \
 	CONTAINER(ptr, type, member)
 
 #define list_free(ptr, type, member, free_entry) 				\
@@ -33,7 +33,7 @@ int list_empty(listentry_t *head);
 		listentry_t *e = (ptr)->next; 					\
 		while (e != (ptr)) { 						\
 			listentry_t *next = e->next; 				\
-			type *entry = list_entry(e, type, member);		\
+			type *entry = list_entry_content(e, type, member);		\
 			free_entry(entry); 					\
 			e = next; 						\
 		} 								\

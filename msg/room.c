@@ -3,37 +3,58 @@
 #include <string.h>
 #include <unistd.h> /* sleep */
 
+#include <ncurses.h>
+
 #include "api/api.h"
+#include "lib/hcurs.h"
 #include "msg/command.h"
 #include "msg/inputline.h"
 #include "msg/readmsg.h"
 #include "msg/room.h"
 #include "msg/smc.h"
 
-room_t *room;
-listentry_t *messages;
+room_t *smc_cur_room;
 
 #define MSG_PROMPT "> "
-tb_win_t msgwin;
-tb_win_t titlewin;
-listentry_t *msgwins;
 
-static void get_member(char *userid, member_t **mem)
+#define MSGLINES_BUFSIZE 16
+
+typedef struct {
+
+	WINDOW *pad;
+	int y;
+	int x;
+	int height;
+	int width;
+} pad_t;
+
+typedef struct {
+	listentry_t entry;
+
+	msg_t *m;
+	member_t *mem;
+	char *content;
+	int height;
+	int width;
+} msgbox_t;
+
+pad_t titlewin;
+pad_t msgwin;
+listentry_t msgboxes;
+int initialized = 0;
+
+static member_t *get_member(char *userid)
 {
-	for (listentry_t *e = room->members.next; e != &room->members; e = e->next) {
-		member_t *m = list_entry(e, member_t, entry);
+	listentry_t *members = &smc_cur_room->members;
+	for (listentry_t *e = members->next; e != members; e = e->next) {
+		member_t *m = list_entry_content(e, member_t, entry);
 		if (strcmp(userid, m->userid) == 0) {
-			*mem = m;
-			return;
+			return m;
 		}
 	}
 	assert(0);
 }
 
-static void draw_msg(char *msg, tb_win_t *win)
-{
-
-}
 static int send_msg(char *msg)
 {
 	char *body = strdup(msg);
@@ -45,7 +66,7 @@ static int send_msg(char *msg)
 	m.body = body;
 
 	char *evid;
-	if (api_send_msg(room->id, &m, &evid)) {
+	if (api_send_msg(smc_cur_room->id, &m, &evid)) {
 		free(body);
 		return -1;
 	}
@@ -59,7 +80,7 @@ static int invite_users(size_t nids, char **userids)
 {
 	int err;
 	for (size_t i = 0; i < nids; ++i) {
-		err = api_invite(room->id, userids[i]);
+		err = api_invite(smc_cur_room->id, userids[i]);
 		if (err == 1) {
 			input_line_print("api err: %s\n", api_last_errmsg);
 			return 2;
@@ -96,82 +117,173 @@ static int handle_command(char *cmd)
 	return 0;
 }
 
-static void calc_windows(void)
+static void free_msgbox(msgbox_t *mb)
 {
-	titlewin.x = 0;
+	free(mb->content);
+	free(mb);
+}
+
+static void calc_titlewin(void)
+{
+	int w = strlen(smc_cur_room->name) + STRLEN("  ") + strlen(smc_cur_room->topic) + 1;
+
 	titlewin.y = 0;
-	titlewin.width = tb_width();
+	titlewin.x = 0;
 	titlewin.height = 2;
-	titlewin.wrap = 0;
-
-	msgwin.x = 0;
-	msgwin.y = 2;
-	msgwin.width = tb_width();
-	msgwin.height = tb_height() - 3;
-	msgwin.wrap = 0;
+	titlewin.width = MAX(w, COLS);
 }
-
-void room_init(void)
+static int calc_msgbox(msgbox_t *mb, member_t *mem, msg_t *m)
 {
-	calc_windows();
-}
-void room_cleanup(void)
-{
-	/* empty for now */
-}
+	char *content = malloc(strlen(m->body) + 1);
+	if (!content)
+		return 1;
+	strcpy(content, m->body);
 
-int room_draw(void)
-{
-	tbh_clear();
-	calc_windows();
+	int w = MAX(strlen(mem->displayname), COLS);
+	int h = strlen(m->body) / w + 2;
 
-	tb_wmove(&titlewin, 0, 0);
-
-	int err;
-	if ((err = tb_printf(&titlewin, TB_DEFAULT | TB_BOLD, TB_DEFAULT, "%s   ", room->name)))
-		return err;
-	if ((err = tb_printf(&titlewin, TB_DEFAULT, TB_DEFAULT, "%s   %s\n", room->topic, room->id)))
-		return err;
-	tb_present();
-
-	tb_hline(&titlewin, tb_width(), TB_TABLE_HLINE);
-
-	tb_wmove(&msgwin, 0, 0);
-	for (listentry_t *e = room->messages.next; e != &room->messages; e = e->next) {
-		msg_t *m = list_entry(e, msg_t, entry);
-
-		member_t *mem;
-		get_member(m->sender, &mem);
-
-		if ((err = tb_printf(&msgwin, TB_DEFAULT | TB_BOLD, TB_DEFAULT, "%s\n", mem->displayname)))
-			return err;
-		if ((err = tb_printf(&msgwin, TB_DEFAULT, TB_DEFAULT, "%s\n", m->body)))
-			return err;
-		if ((err = tb_printf(&msgwin, TB_DEFAULT, TB_DEFAULT, "\n")))
-			return err;
-	}
-
-	if (input_line_is_active())
-		input_line_draw();
-
-	tb_present();
+	mb->m = m;
+	mb->mem = mem;
+	mb->content = content;
+	mb->height = h;
+	mb->width = w;
 	return 0;
 }
-void room_clear()
+static int calc_msgwin(void)
 {
-	tbh_clear();
-	tb_present();
-}
-void room_set_room(room_t *r)
-{
-	room = r;
+	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+	list_init(&msgboxes);
+
+	int off = 0;
+	int maxwidth = 0;
+	listentry_t *msgs = &smc_cur_room->messages;
+	for (listentry_t *e = msgs->next; e != msgs; e = e->next) {
+		msgbox_t *mb = malloc(sizeof(*mb));
+		if (!mb)
+			goto err_free_msgboxes;
+		memset(mb, 0, sizeof(*mb));
+
+		msg_t *m = list_entry_content(e, msg_t, entry);
+		member_t *mem = get_member(m->sender);
+		if (calc_msgbox(mb, mem, m)) {
+			free(mb);
+			goto err_free_msgboxes;
+		}
+		off += mb->height + 1;
+		if (mb->width > maxwidth)
+			maxwidth = mb->width;
+
+		list_add(&msgboxes, &mb->entry);
+	}
+
+	msgwin.y = 2;
+	msgwin.x = 0;
+	msgwin.height = off - 1;
+	msgwin.width = maxwidth + 1;
+	return 0;
+
+err_free_msgboxes:
+	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+	return 1;
 }
 
-int room_handle_normal_key_event(struct tb_event *ev)
+static void free_windows(void)
 {
-	input_line_clear();
+	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+}
+static int init_windows(void)
+{
+	calc_titlewin();
+	WINDOW *titlepad = newpad(titlewin.height + 1, titlewin.width);
+	if (!titlepad)
+		return 1;
+	titlewin.pad = titlepad;
 
-	switch (ev->ch) {
+	list_init(&msgboxes);
+	calc_msgwin();
+
+	WINDOW *msgpad = newpad(msgwin.height + 1, msgwin.width);
+	if (!msgpad)
+		goto err_free_msgboxes;
+	msgwin.pad = msgpad;
+	return 0;
+
+err_free_msgwin:
+	delwin(msgpad);
+err_free_msgboxes:
+	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+	delwin(titlepad);
+	return 1;
+}
+
+static int refresh_pad(pad_t *p)
+{
+	int h = MIN(p->height, LINES - p->y);
+	int w = MIN(p->width, COLS - p->x);
+	if (h <= 0 || w <= 0)
+		return 1;
+
+	assert(prefresh(p->pad, 0, 0, p->y, p->x, p->y + h - 1, p->x + w - 1) != ERR);
+	return 0;
+}
+static int refresh_msgwin(pad_t *p)
+{
+	int h = LINES - p->y;
+	int w = MIN(p->width, COLS - p->x);
+	if (h <= 0 || w <= 0)
+		return 1;
+
+	int py = p->height - h;
+	assert(prefresh(p->pad, py, 0, p->y, p->x, p->y + h - 1, p->x + w - 1) != ERR);
+	return 0;
+}
+static void draw_title(void)
+{
+	wclear(titlewin.pad);
+
+	wmove(titlewin.pad, 0, 0);
+
+	wattron(titlewin.pad, A_BOLD);
+	wprintw(titlewin.pad, "%s", smc_cur_room->name);
+	wattroff(titlewin.pad, A_BOLD);
+	refresh_pad(&titlewin);
+
+	wprintw(titlewin.pad, "  %s\n", smc_cur_room->topic);
+	refresh_pad(&titlewin);
+
+	whline(titlewin.pad, ACS_HLINE, titlewin.width);
+	refresh_pad(&titlewin);
+}
+static void draw_message_window(void)
+{
+	wclear(msgwin.pad);
+
+	//int ymax = getmaxy(msgwin.pad);
+	//wmove(msgwin.pad, ymax - 5, 0);
+	//wprintw(msgwin.pad, "This is a test!");
+	//refresh_msgwin(&msgwin);
+
+	wmove(msgwin.pad, 0, 0);
+	for (listentry_t *e = msgboxes.next; e != &msgboxes; e = e->next) {
+		msgbox_t *mb = list_entry_content(e, msgbox_t, entry);
+
+		wattron(msgwin.pad, A_BOLD);
+		wprintw(msgwin.pad, "%s\n", mb->mem->displayname);
+		wattroff(msgwin.pad, A_BOLD);
+		refresh_msgwin(&msgwin);
+
+		waddstr(msgwin.pad, mb->content);
+		refresh_msgwin(&msgwin);
+
+		if (e != msgboxes.prev)
+			wmove(msgwin.pad, getcury(msgwin.pad) + 2, 0);
+	}
+	refresh_msgwin(&msgwin);
+}
+
+static int handle_normal_key_event(int ch)
+{
+	switch (ch) {
 	case 'o':
 		input_line_start(MSG_PROMPT, send_msg);
 		break;
@@ -183,15 +295,55 @@ int room_handle_normal_key_event(struct tb_event *ev)
 	}
 	return 0;
 }
-int room_handle_event(struct tb_event *ev, uimode_t *newmode)
+
+int room_init(void)
+{
+	if (init_windows())
+		return 1;
+	input_line_init();
+	initialized = 1;
+	return 0;
+}
+void room_cleanup(void)
+{
+	free_windows();
+	initialized = 0;
+}
+int room_is_initialized(void)
+{
+	return initialized;
+}
+
+int room_draw(void)
+{
+	clear();
+	refresh();
+
+	calc_titlewin();
+	wresize(titlewin.pad, titlewin.height + 1, titlewin.width);
+
+	if (calc_msgwin())
+		return 1;
+	wresize(msgwin.pad, msgwin.height + 1, msgwin.width);
+
+	draw_title();
+	draw_message_window();
+
+	//if (input_line_is_active())
+	//	input_line_draw();
+
+	return 0;
+}
+
+int room_handle_event(int ch, uimode_t *newmode)
 {
 	int err;
 	if (input_line_is_active()) {
-		err = input_line_handle_event(ev);
-	} else if (ev->type == TB_EVENT_RESIZE) {
+		err = input_line_handle_event(ch);
+	} else if (ch == KEY_RESIZE) {
 		err = room_draw();
-	} else if (ev->type == TB_EVENT_KEY) {
-		err = room_handle_normal_key_event(ev);
+	} else {
+		err = handle_normal_key_event(ch);
 	}
 	*newmode = MODE_ROOM;
 	return err;
@@ -200,3 +352,4 @@ int room_handle_sync(void)
 {
 	return room_draw();
 }
+

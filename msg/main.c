@@ -9,9 +9,10 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <ncurses.h>
+
 #include "api/api.h"
 #include "api/state.h"
-#include "lib/htermbox.h"
 #include "lib/list.h"
 #include "msg/menu.h"
 #include "msg/smc.h"
@@ -229,16 +230,16 @@ static int handle_sync(uimode_t mode)
 	}
 	return 0;
 }
-static int handle_event(uimode_t *mode, struct tb_event *ev)
+static int handle_event(uimode_t *mode, int ch)
 {
 	int err;
 	switch (*mode) {
 	case MODE_ROOM_MENU:
-		if ((err = room_menu_handle_event(ev, mode)))
+		if ((err = room_menu_handle_event(ch, mode)))
 			return err;
 		break;
 	case MODE_ROOM:
-		if ((err = room_handle_event(ev, mode)))
+		if ((err = room_handle_event(ch, mode)))
 			return err;
 		break;
 	default:
@@ -259,34 +260,53 @@ static void setup(void)
 		close(flog);
 		exit(1);
 	}
+
 	if (ensure_login()) {
 		fprintf(stderr, "%s: Failed to login\n", __func__);
 		goto err_api_free;
 	}
 
-	if (start_sync()) {
-		fprintf(stderr, "%s: Failed to start sync thread\n", __func__);
-		goto err_api_free;
+	list_init(&smc_rooms[ROOMTYPE_JOINED]);
+	list_init(&smc_rooms[ROOMTYPE_INVITED]);
+	list_init(&smc_rooms[ROOMTYPE_LEFT]);
+	if (update()) {
+		fprintf(stderr, "%s: Failed to perform initial sync\n", __func__);
+		goto err_rooms_free;
 	}
 
-	if (tbh_init()) {
-		fprintf(stderr, "%s: failed to init termbox\n", __func__);
-		goto err_api_free;
+	if (start_sync()) {
+		fprintf(stderr, "%s: Failed to start sync thread\n", __func__);
+		goto err_rooms_free;
+	}
+
+	if (!initscr()) {
+		fprintf(stderr, "%s: failed to init ncurses\n", __func__);
+		goto err_sync_stop;
+	}
+
+	if (cbreak() || noecho() || nodelay(stdscr, TRUE) || curs_set(0) == ERR) {
+		fprintf(stderr, "%s: failed to init ncurses\n", __func__);
+		goto err_curses_free;
 	}
 
 	if (room_menu_init()) {
 		fprintf(stderr, "%s: failed to initialize room menu\n", __func__);
-		goto err_termbox_free;
+		goto err_curses_free;
 	}
-
-	room_init();
 	return;
 
 err_interfaces_free:
 	room_cleanup();
 	room_menu_cleanup();
-err_termbox_free:
-	tbh_shutdown();
+err_curses_free:
+	endwin();
+err_sync_stop:
+	smc_terminate = 1;
+	pthread_join(sync_handler, NULL);
+err_rooms_free:
+	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
 err_api_free:
 	api_cleanup();
 	close(flog);
@@ -294,27 +314,25 @@ err_api_free:
 }
 static void run(void)
 {
-	tbh_clear();
+	clear();
+	refresh();
 
 	room_menu_draw();
 	uimode_t mode = MODE_ROOM_MENU;
 
 	int c;
-	int err;
-	struct tb_event ev;
+	int ch;
 	const struct timespec tsleep = {.tv_sec = 0, .tv_nsec = 10 * 1000 * 1000 };
 	struct timespec ts;
 	while (1) {
-		err = tbh_peek_event(&ev, 0);
-		if (err < 0)
-			goto err_cleanup;
+		ch = getch();
 
 		pthread_mutex_lock(&smc_synclock);
 		int sync = smc_sync_avail;
 		pthread_mutex_unlock(&smc_synclock);
 
-		if (err > 0) {
-			if (handle_event(&mode, &ev))
+		if (ch != ERR) {
+			if (handle_event(&mode, ch))
 				goto err_cleanup;
 		} else if (sync) {
 			if (handle_sync(mode))
@@ -344,12 +362,15 @@ err_cleanup:
 }
 static void cleanup(void)
 {
-	room_cleanup();
 	room_menu_cleanup();
-	tbh_shutdown();
+	endwin();
 
 	smc_terminate = 1;
 	pthread_join(sync_handler, NULL);
+
+	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
 
 	api_cleanup();
 

@@ -14,7 +14,7 @@ src_msg = files([
 	'api/state.c',
 	'lib/hjson.c',
 	'lib/list.c',
-	'lib/htermbox.c'
+	'lib/hcurs.c'
 ])
 src_rooms = files([
 	'rooms/main.c',
@@ -27,7 +27,7 @@ inc = include_directories('.')
 
 dep_jsonc = dependency('json-c')
 dep_curl = dependency('libcurl')
-dep_termbox = dependency('termbox')
+dep_termbox = dependency('ncurses')
 dep_readline = dependency('readline')
 dep_threads = dependency('threads')
 

@@ -288,7 +288,7 @@ int apply_room_member(json_object *obj, roomevent_meta_t *meta, room_t *room)
 
 	int overwritten = 0;
 	for (listentry_t *e = room->members.next; e != &room->members; e = e->next) {
-		member_t *m = list_entry(e, member_t, entry);
+		member_t *m = list_entry_content(e, member_t, entry);
 		if (strcmp(m->userid, member->userid) == 0) {
 			list_replace(&m->entry, &member->entry);
 			free_member(m);
@@ -661,7 +661,7 @@ int __apply_room_updates(json_object *obj, listentry_t *rooms,
 	json_object_object_foreach(obj, key, val) {
 		room_t *target = NULL;
 		for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
-			room_t *room = list_entry(e, room_t, entry);
+			room_t *room = list_entry_content(e, room_t, entry);
 			if (strcmp(room->id, key) == 0) {
 				target = room;
 				break;

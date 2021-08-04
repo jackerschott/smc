@@ -58,7 +58,7 @@ err_free:;
 	listentry_t *e = h->next;
 	while (e != h) {
 		listentry_t *next = e->next;
-		event_t *ev = list_entry(e, event_t, entry);
+		event_t *ev = list_entry_content(e, event_t, entry);
 		free_event(ev);
 		e = next;
 	}
@@ -97,7 +97,7 @@ err_free:;
 	listentry_t *e = h->next;
 	while (e != h) {
 		listentry_t *next = e->next;
-		roominfo_t *info = list_entry(e, roominfo_t, entry);
+		roominfo_t *info = list_entry_content(e, roominfo_t, entry);
 		free_roominfo(info);
 		e = next;
 	}
@@ -217,7 +217,7 @@ static void free_event_list(listentry_t *head)
 	listentry_t *e = head->next;
 	while (e != head) {
 		listentry_t *next = e->next;
-		event_t *ev = list_entry(e, event_t, entry);
+		event_t *ev = list_entry_content(e, event_t, entry);
 		free_event(ev);
 		e = next;
 	}
@@ -747,7 +747,7 @@ static void free_roominfo_list(listentry_t *head)
 	listentry_t *e = head->next;
 	while (e != head) {
 		listentry_t *next = e->next;
-		roominfo_t *info = list_entry(e, roominfo_t, entry);
+		roominfo_t *info = list_entry_content(e, roominfo_t, entry);
 		free_roominfo(info);
 		e = next;
 	}
@@ -1044,7 +1044,7 @@ int parse_state(json_object *obj, state_t **state)
 	}
 
 	for (listentry_t *e = s->rooms->next; e != s->rooms; e = e->next) {
-		roominfo_t *info = list_entry(e, roominfo_t, entry);
+		roominfo_t *info = list_entry_content(e, roominfo_t, entry);
 		printf("%s\n", info->id);
 	};
 

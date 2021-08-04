@@ -6,7 +6,7 @@ int smc_sync_avail = 0;
 
 pthread_mutex_t smc_synclock;
 
-static int update(void)
+int update(void)
 {
 	listentry_t *joined = &smc_rooms[ROOMTYPE_JOINED];
 	listentry_t *invited = &smc_rooms[ROOMTYPE_INVITED];
