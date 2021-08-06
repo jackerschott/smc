@@ -384,7 +384,7 @@ err_free_rooms:
 	return -1;
 }
 
-int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *leftrooms)
+int api_sync(json_object **resp)
 {
 	assert(accesstoken);
 
@@ -398,18 +398,15 @@ int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *l
 	}
 
 	int code;
-	json_object *resp;
-	int err = api_call("GET", "/_matrix/client/r0/sync", urlparams, NULL, &code, &resp);
+	int err = api_call("GET", "/_matrix/client/r0/sync", urlparams, NULL, &code, resp);
 	if (err)
 		return err;
 
 	free(nextbatch);
-	if ((err = apply_sync_state_updates(resp, joinedrooms, invitedrooms,
-					leftrooms, &nextbatch))) {
-		json_object_put(resp);
+	if ((err = get_object_as_string(*resp, "next_batch", &nextbatch))) {
 		return err;
 	}
-	json_object_put(resp);
+
 	return 0;
 }
 

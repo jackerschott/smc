@@ -1,18 +1,29 @@
-#include "msg/sync.h"
 #include "api/api.h"
+#include "msg/sync.h"
 
 listentry_t smc_rooms[ROOMTYPE_NUM];
+room_t *smc_cur_room;
 int smc_sync_avail = 0;
 
 pthread_mutex_t smc_synclock;
 
 int update(void)
 {
+	json_object *resp;
+	if (api_sync(&resp))
+		return 1;
+
+	pthread_mutex_lock(&smc_synclock);
 	listentry_t *joined = &smc_rooms[ROOMTYPE_JOINED];
 	listentry_t *invited = &smc_rooms[ROOMTYPE_INVITED];
 	listentry_t *left = &smc_rooms[ROOMTYPE_LEFT];
-	if (api_sync(joined, invited, left))
+	if (apply_sync_state_updates(resp, joined, invited, left)) {
+		json_object_put(resp);
 		return 1;
+	}
+	pthread_mutex_unlock(&smc_synclock);
+
+	json_object_put(resp);
 	return 0;
 }
 
@@ -22,6 +33,7 @@ void *sync_main(void *args)
 	while (1) {
 		if (update())
 			goto err_cleanup;
+
 		pthread_mutex_lock(&smc_synclock);
 		smc_sync_avail = 1;
 		pthread_mutex_unlock(&smc_synclock);
@@ -44,6 +56,8 @@ void *sync_main(void *args)
 	}
 
 err_cleanup:
+	pthread_mutex_lock(&smc_synclock);
 	smc_terminate = 1;
+	pthread_mutex_unlock(&smc_synclock);
 	return 0;
 }

@@ -17,6 +17,8 @@ typedef union {
 	command_invite_t invite;
 } command_t;
 
-int parse_command(const char *str, command_t *cmd);
+int parse_command(const char *str, command_t **_cmd);
+
+void free_cmd(command_t *cmd);
 
 #endif /* COMMAND_H */

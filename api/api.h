@@ -95,7 +95,7 @@ int api_room_create(const char *clientid, const char *name, const char *alias,
 int api_room_leave(const char *id);
 int api_room_forget(const char *id);
 int api_room_list_joined(char ***joinedrooms, size_t *nrooms);
-int api_sync(listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *leftrooms);
+int api_sync(json_object **resp);
 
 int api_send_msg(const char *roomid, msg_t *msg, char **evid);
 

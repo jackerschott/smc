@@ -103,6 +103,9 @@ typedef struct {
 	prevroom_t *replacetarget;
 
 	listentry_t messages;
+
+	/* non-api */
+	int dirty;
 } room_t;
 
 static const char *history_visibility_str[] = {
@@ -139,6 +142,6 @@ static const char *msg_type_str[] = {
 void free_room(room_t *room);
 
 int apply_sync_state_updates(json_object *obj, listentry_t *joinedrooms,
-		listentry_t *invitedrooms, listentry_t *leftrooms, char **nextbatch);
+		listentry_t *invitedrooms, listentry_t *leftrooms);
 
 #endif /* STATE_H */

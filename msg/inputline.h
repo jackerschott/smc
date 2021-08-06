@@ -1,9 +1,7 @@
 #ifndef INPUT_LINE_H
 #define INPUT_LINE_H
 
-#include "lib/htermbox.h"
-
-void input_line_start(char *prompt, int (*handler)(char *));
+int input_line_start(char *prompt, int (*handler)(char *));
 void input_line_stop(void);
 int input_line_handle_event(int ch);
 int input_line_is_active(void);

@@ -42,17 +42,24 @@ err_free:
 	return -1;
 }
 
-int parse_command(const char *str, command_t *cmd)
+int parse_command(const char *str, command_t **_cmd)
 {
-	char *s = strdup(str);
-	if (!s)
+	command_t *cmd = malloc(sizeof(*cmd));
+	if (!cmd)
 		return -1;
+
+	char *s = strdup(str);
+	if (!s) {
+		free(cmd);
+		return -1;
+	}
 
 
 	size_t nargs = 0;
 	char **args = malloc(ARGS_NUM_MAX * sizeof(*args));
 	if (!args) {
 		free(s);
+		free(cmd);
 		return -1;
 	}
 
@@ -71,25 +78,58 @@ int parse_command(const char *str, command_t *cmd)
 			assert(nargs < ARGS_NUM_MAX);
 		}
 	}
+	if (nargs == 0) {
+		free(args);
+		free(s);
+		free(cmd);
+		return 2;
+	}
 
 	char *name = strdup(args[0]);
 	if (!name) {
 		free(args);
 		free(s);
+		free(cmd);
 		return -1;
 	}
-	cmd->name = name;
 
 	int err;
-	if (strcmp(cmd->name, "invite") == 0) {
-		if ((err = parse_invite(args + 1, nargs - 1, &cmd->invite)))
-			return 1;
+	if (strcmp(name, "invite") == 0) {
+		if ((err = parse_invite(args + 1, nargs - 1, &cmd->invite))) {
+			free(name);
+			free(args);
+			free(s);
+			free(cmd);
+			return err;
+		}
 	} else {
 		strcpy(cmd_last_err, "unknown command");
+
+		free(name);
+		free(args);
+		free(s);
+		free(cmd);
 		return 1;
 	}
-
 	free(args);
 	free(s);
+
+	cmd->name = name;
+	*_cmd = cmd;
 	return 0;
+}
+
+void free_cmd_invite(command_invite_t *cmd)
+{
+	for (size_t i = 0; i < cmd->nuserids; ++i) {
+		free(cmd->userids[i]);
+	}
+}
+void free_cmd(command_t *cmd)
+{
+	if (strcmp(cmd->name, "invite")) {
+		free_cmd_invite(&cmd->invite);
+	}
+	free(cmd->name);
+	free(cmd);
 }

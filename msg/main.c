@@ -153,20 +153,36 @@ static int ensure_login(void)
 }
 static int start_sync(void)
 {
-	int err = 0;
+	if (pthread_mutex_init(&smc_synclock, NULL))
+		return 1;
+
 	pthread_attr_t attr;
-	if ((err = pthread_attr_init(&attr))) {
-		return err;
+	if (pthread_attr_init(&attr)) {
+		pthread_mutex_destroy(&smc_synclock);
+		return 1;
 	}
-	if ((err = pthread_attr_setstacksize(&attr, SYNC_HANDLER_STACKSIZE))) {
+	if (pthread_attr_setstacksize(&attr, SYNC_HANDLER_STACKSIZE)) {
 		pthread_attr_destroy(&attr);
-		return err;
+		pthread_mutex_destroy(&smc_synclock);
+		return 1;
 	}
-	if ((err = pthread_create(&sync_handler, &attr, sync_main, NULL))) {
-		perror(NULL);
+	if (pthread_create(&sync_handler, &attr, sync_main, NULL)) {
+		pthread_attr_destroy(&attr);
+		pthread_mutex_destroy(&smc_synclock);
+		return 1;
 	}
 	pthread_attr_destroy(&attr);
-	return err;
+	return 0;
+}
+static void stop_sync(void)
+{
+	pthread_mutex_lock(&smc_synclock);
+	smc_terminate = 1;
+	pthread_mutex_unlock(&smc_synclock);
+
+	pthread_join(sync_handler, NULL);
+
+	pthread_mutex_destroy(&smc_synclock);
 }
 
 int parse_options(int argc, char *const argv[])
@@ -274,14 +290,9 @@ static void setup(void)
 		goto err_rooms_free;
 	}
 
-	if (start_sync()) {
-		fprintf(stderr, "%s: Failed to start sync thread\n", __func__);
-		goto err_rooms_free;
-	}
-
 	if (!initscr()) {
 		fprintf(stderr, "%s: failed to init ncurses\n", __func__);
-		goto err_sync_stop;
+		goto err_rooms_free;
 	}
 
 	if (cbreak() || noecho() || nodelay(stdscr, TRUE) || curs_set(0) == ERR) {
@@ -293,16 +304,17 @@ static void setup(void)
 		fprintf(stderr, "%s: failed to initialize room menu\n", __func__);
 		goto err_curses_free;
 	}
+
+	if (start_sync()) {
+		fprintf(stderr, "%s: Failed to start sync thread\n", __func__);
+		goto err_room_menu_free;
+	}
 	return;
 
-err_interfaces_free:
-	room_cleanup();
+err_room_menu_free:
 	room_menu_cleanup();
 err_curses_free:
 	endwin();
-err_sync_stop:
-	smc_terminate = 1;
-	pthread_join(sync_handler, NULL);
 err_rooms_free:
 	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
 	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
@@ -362,11 +374,10 @@ err_cleanup:
 }
 static void cleanup(void)
 {
+	stop_sync();
+
 	room_menu_cleanup();
 	endwin();
-
-	smc_terminate = 1;
-	pthread_join(sync_handler, NULL);
 
 	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
 	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
@@ -374,6 +385,7 @@ static void cleanup(void)
 
 	api_cleanup();
 
+	dprintf(flog, "%s\n", "cleanup");
 	close(flog);
 }
 int main(int argc, char *argv[])
@@ -383,5 +395,6 @@ int main(int argc, char *argv[])
 	setup();
 	run();
 	cleanup();
-	return 0;
+
+	exit_curses(0);
 }

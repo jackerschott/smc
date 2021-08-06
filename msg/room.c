@@ -12,8 +12,7 @@
 #include "msg/readmsg.h"
 #include "msg/room.h"
 #include "msg/smc.h"
-
-room_t *smc_cur_room;
+#include "msg/sync.h"
 
 #define MSG_PROMPT "> "
 
@@ -92,17 +91,19 @@ static int invite_users(size_t nids, char **userids)
 }
 static int handle_command(char *cmd)
 {
-	command_t c;
+	command_t *c;
 	int err = parse_command(cmd, &c);
 	if (err == 1) {
-		input_line_print("err: %s\n", cmd_last_err);
+		input_line_print("err: %s", cmd_last_err);
 		return 0;
-	} else if (err != 0) {
+	} else if (err == 2) {
+		return 0;
+	} else if (err == -1) {
 		return 1;
 	}
 
-	if (strcmp(c.name, "invite") == 0) {
-		command_invite_t invite = c.invite;
+	if (strcmp(c->name, "invite") == 0) {
+		command_invite_t invite = c->invite;
 		err = invite_users(invite.nuserids, invite.userids);
 		if (err == 2) {
 			return 0;
@@ -114,6 +115,7 @@ static int handle_command(char *cmd)
 		return 0;
 	}
 
+	free_cmd(c);
 	return 0;
 }
 
@@ -285,10 +287,16 @@ static int handle_normal_key_event(int ch)
 {
 	switch (ch) {
 	case 'o':
-		input_line_start(MSG_PROMPT, send_msg);
+		if (input_line_start(MSG_PROMPT, send_msg))
+			return 1;
 		break;
 	case ':':
 		input_line_start(CMD_PROMPT, handle_command);
+		break;
+	case 'q':
+		pthread_mutex_lock(&smc_synclock);
+		smc_terminate = 1;
+		pthread_mutex_unlock(&smc_synclock);
 		break;
 	default:
 		break;
@@ -306,6 +314,8 @@ int room_init(void)
 }
 void room_cleanup(void)
 {
+	input_line_cleanup();
+
 	free_windows();
 	initialized = 0;
 }
@@ -329,27 +339,43 @@ int room_draw(void)
 	draw_title();
 	draw_message_window();
 
-	//if (input_line_is_active())
-	//	input_line_draw();
+	if (input_line_is_active())
+		input_line_draw();
 
+	pthread_mutex_lock(&smc_synclock);
+	smc_cur_room->dirty = 0;
+	pthread_mutex_unlock(&smc_synclock);
 	return 0;
 }
 
 int room_handle_event(int ch, uimode_t *newmode)
 {
-	int err;
-	if (input_line_is_active()) {
-		err = input_line_handle_event(ch);
-	} else if (ch == KEY_RESIZE) {
-		err = room_draw();
-	} else {
-		err = handle_normal_key_event(ch);
-	}
 	*newmode = MODE_ROOM;
-	return err;
+
+	if (ch == KEY_RESIZE) {
+		if (room_draw())
+			return 1;
+	}
+
+	if (input_line_is_active()) {
+		if (input_line_handle_event(ch))
+			return 1;
+		return 0;
+	}
+
+	if (handle_normal_key_event(ch))
+		return 1;
+	return 0;
 }
 int room_handle_sync(void)
 {
-	return room_draw();
-}
+	pthread_mutex_lock(&smc_synclock);
+	int dirty = smc_cur_room->dirty;
+	pthread_mutex_unlock(&smc_synclock);
+	if (!dirty)
+		return 0;
 
+	if (room_draw())
+		return 1;
+	return 0;
+}

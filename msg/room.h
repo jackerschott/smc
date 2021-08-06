@@ -5,8 +5,6 @@
 #include "lib/htermbox.h"
 #include "msg/ui.h"
 
-extern room_t *smc_cur_room;
-
 int room_init(void);
 void room_cleanup(void);
 int room_is_initialized(void);

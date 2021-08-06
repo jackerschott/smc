@@ -3,6 +3,7 @@
 
 #include <pthread.h>
 
+#include "api/state.h"
 #include "lib/list.h"
 
 typedef enum {
@@ -13,6 +14,7 @@ typedef enum {
 } room_type_t;
 
 extern listentry_t smc_rooms[ROOMTYPE_NUM];
+extern room_t *smc_cur_room;
 extern int smc_sync_avail;
 
 extern pthread_mutex_t smc_synclock;

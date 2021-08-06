@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdarg.h>
 #include <stdio.h> /* FILE */
+#include <stdlib.h>
 
 #include <readline/readline.h>
 #include <ncurses.h>
@@ -16,8 +17,9 @@ int is_active;
 
 int line_handle_err;
 
-int (*handle_line)(char *);
+int line_offset = 0;
 
+int (*handle_line)(char *);
 static int readline_getc(FILE *f)
 {
 	UNUSED(f);
@@ -32,50 +34,62 @@ static int readline_input_avail(void)
 
 void update_line(void)
 {
-	size_t xcur = strlen(rl_display_prompt) + rl_point;
+	int xpoint = rl_point;
+	int len = strlen(rl_line_buffer);
+	int promptlen = strlen(rl_display_prompt);
+
+	int linelen = COLS - promptlen;
+	//line_offset = CLAMP(line_offset, xpoint - linelen + 1, xpoint);
+	//if (len > linelen)
+	//	line_offset = MIN(line_offset, len - linelen);
+	line_offset = MAX(xpoint - linelen + 1, 0);
+	assert(line_offset <= len);
 
 	werase(inputwin);
 	wmove(inputwin, 0, 0);
-	wprintw(inputwin, "%s%s", rl_display_prompt, rl_line_buffer);
-	wmove(inputwin, xcur, 0);
+	wprintw(inputwin, "%s%s", rl_display_prompt, rl_line_buffer + line_offset);
+	wmove(inputwin, 0, promptlen + xpoint - line_offset);
 	wrefresh(inputwin);
 }
 void forward_line(char *line)
-{
-	input_line_stop();
-
-	if (!line) {
-		line_handle_err = 0;
-		return;
-	}
-
-	line_handle_err = handle_line(line);
-}
-
-void input_line_start(char *prompt, int (*handler)(char *))
-{
-	wmove(inputwin, 0, 0);
-	curs_set(1);
-	rl_callback_handler_install(prompt, forward_line);
-
-	handle_line = handler;
-	is_active = 1;
-}
-void input_line_stop(void)
 {
 	rl_callback_handler_remove();
 
 	werase(inputwin);
 	curs_set(0);
 	wrefresh(inputwin);
-
 	is_active = 0;
+
+	if (!line || input != '\n') {
+		line_handle_err = 0;
+	} else {
+		line_handle_err = handle_line(line);
+	}
+
+	delwin(inputwin);
+	free(line);
+}
+
+int input_line_start(char *prompt, int (*handler)(char *))
+{
+	WINDOW *win = newwin(1, COLS, LINES - 1, 0);
+	if (!win)
+		return 1;
+	inputwin = win;
+
+	wmove(inputwin, 0, 0);
+	curs_set(1);
+	rl_callback_handler_install(prompt, forward_line);
+
+	handle_line = handler;
+	is_active = 1;
+	return 0;
 }
 int input_line_handle_event(int ch)
 {
 	assert(is_active);
 
-	if (ch == TB_EVENT_RESIZE) {
+	if (ch == KEY_RESIZE) {
 		input_line_draw();
 	} else {
 		input = ch;
@@ -103,6 +117,9 @@ int input_line_print(const char *fmt, ...)
 }
 void input_line_draw(void)
 {
+	mvwin(inputwin, LINES - 1, 0);
+	wresize(inputwin, 1, COLS);
+
 	update_line();
 }
 
@@ -120,15 +137,10 @@ int input_line_init(void)
 	rl_getc_function = readline_getc;
 	rl_input_available_hook = readline_input_avail;
 	rl_redisplay_function = update_line;
-
-	WINDOW *win = newwin(1, COLS, LINES - 1, 0);
-	if (!win)
-		return 1;
-	inputwin = win;
-
 	return 0;
 }
 void input_line_cleanup(void)
 {
-	delwin(inputwin);
+	/* nothing to do for now */
+	rl_clear_history();
 }

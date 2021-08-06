@@ -27,11 +27,11 @@ inc = include_directories('.')
 
 dep_jsonc = dependency('json-c')
 dep_curl = dependency('libcurl')
-dep_termbox = dependency('ncurses')
+dep_curses = dependency('ncurses-without-leaks')
 dep_readline = dependency('readline')
 dep_threads = dependency('threads')
 
 executable('mtxmsg', src_msg, include_directories : inc,
-	dependencies : [dep_jsonc, dep_curl, dep_termbox, dep_readline, dep_threads])
+	dependencies : [dep_jsonc, dep_curl, dep_curses, dep_readline, dep_threads])
 #executable('mtxrooms', src_rooms, include_directories : inc,
 #	dependencies : [dep_jsonc, dep_curl])

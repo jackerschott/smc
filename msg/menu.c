@@ -7,6 +7,7 @@
 
 #include "api/api.h"
 #include "lib/hcurs.h"
+#include "msg/command.h"
 #include "msg/inputline.h"
 #include "msg/menu.h"
 #include "msg/room.h"
@@ -32,14 +33,22 @@ static char * room_type_names[] = {
 	"Left Rooms",
 };
 
-static int refresh_menu_window(menu_win_t *mwin)
+static int handle_command(char *cmd)
 {
-	int h = MIN(mwin->height, LINES - mwin->y);
-	int w = MIN(mwin->width, COLS - mwin->x);
-	if (h <= 0 || w <= 0)
+	command_t *c;
+	int err = parse_command(cmd, &c);
+	if (err == 1) {
+		input_line_print("err: %s", cmd_last_err);
+		return 0;
+	} else if (err == 2) {
+		return 0;
+	} else if (err == -1) {
 		return 1;
+	}
 
-	prefresh(mwin->pad, 0, 0, mwin->y, mwin->x, mwin->y + h - 1, mwin->x + w - 1);
+	input_line_print("err: unknow command\n");
+
+	free_cmd(c);
 	return 0;
 }
 
@@ -49,9 +58,11 @@ static int open_selected_room(void)
 	if (selmwin->nrooms == 0)
 		return 0;
 
+	pthread_mutex_lock(&smc_synclock);
 	listentry_t *e;
 	list_entry_at(&smc_rooms[seltype], selmwin->selid, &e);
 	smc_cur_room = list_entry_content(e, room_t, entry);
+	pthread_mutex_unlock(&smc_synclock);
 
 	if (!room_is_initialized()) {
 		if (room_init())
@@ -67,9 +78,11 @@ static int join_selected_room(void)
 	if (selmwin->nrooms == 0)
 		return 1;
 
+	pthread_mutex_lock(&smc_synclock);
 	listentry_t *e;
 	list_entry_at(&smc_rooms[seltype], selmwin->selid, &e);
 	room_t *room = list_entry_content(e, room_t, entry);
+	pthread_mutex_unlock(&smc_synclock);
 
 	int err = api_join(room->id);
 	if (err == 1) {
@@ -82,6 +95,18 @@ static int join_selected_room(void)
 	room_menu_draw();
 	return 0;
 }
+
+static int refresh_menu_window(menu_win_t *mwin)
+{
+	int h = MIN(mwin->height, LINES - mwin->y);
+	int w = MIN(mwin->width, COLS - mwin->x);
+	if (h <= 0 || w <= 0)
+		return 1;
+
+	prefresh(mwin->pad, 0, 0, mwin->y, mwin->x, mwin->y + h - 1, mwin->x + w - 1);
+	return 0;
+}
+
 static void move_selection(int delta)
 {
 	menu_win_t *selmwin = &menu_wins[seltype];
@@ -121,6 +146,7 @@ static void change_selected_type(room_type_t newtype)
 static void calc_menu_window(menu_win_t *mwin, room_type_t type,
 		size_t nrooms, listentry_t *rooms, int selid, int winoff)
 {
+	pthread_mutex_lock(&smc_synclock);
 	int width = strlen(room_type_names[type]);
 	for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
 		room_t *r = list_entry_content(e, room_t, entry);
@@ -129,6 +155,7 @@ static void calc_menu_window(menu_win_t *mwin, room_type_t type,
 		if (l > width)
 			width = l;
 	}
+	pthread_mutex_unlock(&smc_synclock);
 	width += 1;
 
 	mwin->y = winoff;
@@ -177,11 +204,15 @@ static int draw_menu_window(menu_win_t *mwin, char *name, listentry_t *rooms, in
 	wattroff(pad, A_BOLD);
 	refresh_menu_window(mwin);
 
+	pthread_mutex_lock(&smc_synclock);
 	for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
 		room_t *r = list_entry_content(e, room_t, entry);
 		wprintw(pad, "%s  %s\n", r->name, r->topic);
 		refresh_menu_window(mwin);
+
+		r->dirty = 0;
 	}
+	pthread_mutex_unlock(&smc_synclock);
 
 	if (selected && mwin->nrooms > 0) {
 		wmove(pad, mwin->selid + 1, 0);
@@ -192,33 +223,41 @@ static int draw_menu_window(menu_win_t *mwin, char *name, listentry_t *rooms, in
 	return 0;
 }
 
+static int rooms_are_dirty(void)
+{
+	pthread_mutex_lock(&smc_synclock);
+	int dirty = 0;
+	for (room_type_t t = ROOMTYPE_JOINED; t < ROOMTYPE_NUM; ++t) {
+		listentry_t *rooms = &smc_rooms[t];
+		for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
+			room_t *r = list_entry_content(e, room_t, entry);
+			if (r->dirty) {
+				dirty = 1;
+				break;
+			}
+		}
+	}
+	pthread_mutex_unlock(&smc_synclock);
+	return dirty;
+}
+
 int room_menu_init(void)
 {
 	seltype = ROOMTYPE_JOINED;
 	if (init_windows())
-		goto err_free_rooms;
+		return 1;
 
-	//input_line_init();
+	input_line_init();
 	return 0;
-
-err_free_windows:
-	free_windows();
-err_free_rooms:
-	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
-	return 1;
 }
 void room_menu_cleanup(void)
 {
+	input_line_cleanup();
+
 	if (room_is_initialized())
 		room_cleanup();
 
 	free_windows();
-
-	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
 }
 
 int room_menu_draw(void)
@@ -238,8 +277,8 @@ int room_menu_draw(void)
 		draw_menu_window(&menu_wins[t], room_type_names[t], &smc_rooms[t], t == seltype);
 	}
 
-	//if (input_line_is_active())
-	//	input_line_draw();
+	if (input_line_is_active())
+		input_line_draw();
 
 	return 0;
 }
@@ -248,12 +287,19 @@ int room_menu_handle_event(int ch, uimode_t *newmode)
 {
 	*newmode = MODE_ROOM_MENU;
 
+	if (ch == KEY_RESIZE) {
+		if (room_menu_draw())
+			return 1;
+	}
+
+	if (input_line_is_active()) {
+		if (input_line_handle_event(ch))
+			return 1;
+		return 0;
+	}
+
 	int err = 0;
 	switch (ch) {
-	case KEY_RESIZE:
-		if ((err = room_menu_draw()))
-			assert(0);
-		return err;
 	case '\n':
 		if (seltype == ROOMTYPE_JOINED) {
 			err = open_selected_room();
@@ -283,11 +329,25 @@ int room_menu_handle_event(int ch, uimode_t *newmode)
 	case 'L':
 		change_selected_type(ROOMTYPE_LEFT);
 		return err;
+	case ':':
+		if (input_line_start(CMD_PROMPT, handle_command))
+			return 1;
+		return err;
+	case 'q':
+		pthread_mutex_lock(&smc_synclock);
+		smc_terminate = 1;
+		pthread_mutex_unlock(&smc_synclock);
+		return err;
 	default:
 		return err;
 	}
 }
 int room_menu_handle_sync(void)
 {
-	return room_menu_draw();
+	if (!rooms_are_dirty())
+		return 0;
+
+	if (room_menu_draw())
+		return 1;
+	return 0;
 }
