@@ -62,6 +62,11 @@ typedef struct {
 	char *id;
 	char *lasteventid;
 } prevroom_t;
+typedef struct {
+	int enabled;
+	int rotperiod;
+	int rotmsgnum;
+} encryption_t;
 
 typedef enum {
 	MSG_TEXT,
@@ -101,6 +106,7 @@ typedef struct {
 	char *version;
 	int federate;
 	prevroom_t *replacetarget;
+	encryption_t encryption;
 
 	listentry_t messages;
 
@@ -141,7 +147,10 @@ static const char *msg_type_str[] = {
 
 void free_room(room_t *room);
 
-int apply_sync_state_updates(json_object *obj, listentry_t *joinedrooms,
-		listentry_t *invitedrooms, listentry_t *leftrooms);
+void state_init_batch_list(void);
+void state_free_batch_list(void);
+
+int state_apply_sync_updates(json_object *obj, listentry_t *prevbatches,
+		listentry_t *joinedrooms, listentry_t *invitedrooms, listentry_t *leftrooms);
 
 #endif /* STATE_H */

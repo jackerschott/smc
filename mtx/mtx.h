@@ -2,7 +2,7 @@
 #define API_H
 
 #include "json-c/json.h"
-#include "api/state.h"
+#include "mtx/state.h"
 
 #define API_PARAM_BUFSIZE 2048U
 
@@ -80,26 +80,24 @@ static const char *merrorstr[] = {
 	"M_CANNOT_LEAVE_SERVER_NOTICE_ROOM",
 };
 
-extern int api_last_code;
-extern merror_t api_last_err;
-extern char api_last_errmsg[API_ERRORMSG_BUFSIZE];
+struct mtx_session_t;
+typedef struct mtx_session_t mtx_session_t;
 
-int api_init(void);
-void api_cleanup(void);
-int api_set_access_token(char *token);
+mtx_session_t *mtx_create_session(const char *server, const char *username,
+		const char *password, const char *accesstoken, const char *device_id);
+void mtx_cleanup_session(mtx_session_t *session);
 
-int api_login(const char *username, const char *pass,
-		char **id, char **token, char **homeserver, char **devid);
-int api_room_create(const char *clientid, const char *name, const char *alias,
-		const char *topic, const char *preset, char **id);
-int api_room_leave(const char *id);
-int api_room_forget(const char *id);
-int api_room_list_joined(char ***joinedrooms, size_t *nrooms);
-int api_sync(json_object **resp);
+int mtx_login(mtx_session_t *session, const char *username, const char *pass);
+int mtx_room_create(mtx_session_t *session, const char *clientid, const char *name,
+		const char *alias, const char *topic, const char *preset, char **id);
+int mtx_room_leave(const char *id);
+int mtx_room_forget(const char *id);
+int mtx_room_list_joined(char ***joinedrooms, size_t *nrooms);
+int mtx_sync(mtx_session_t *session, json_object **resp);
 
-int api_send_msg(const char *roomid, msg_t *msg, char **evid);
+int mtx_send_msg(const char *roomid, msg_t *msg, char **evid);
 
-int api_invite(const char *roomid, const char *userid);
-int api_join(const char *roomid);
+int mtx_invite(const char *roomid, const char *userid);
+int mtx_join(const char *roomid);
 
 #endif /* API_H */

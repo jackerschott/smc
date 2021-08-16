@@ -10,9 +10,10 @@
 #include <unistd.h>
 
 #include <ncurses.h>
+#include <sqlite3.h>
 
-#include "api/api.h"
-#include "api/state.h"
+#include "mtx/mtx.h"
+#include "mtx/state.h"
 #include "lib/list.h"
 #include "msg/menu.h"
 #include "msg/smc.h"
@@ -21,6 +22,8 @@
 #include "msg/ui.h"
 
 #define SYNC_HANDLER_STACKSIZE (4096 * 64)
+
+mtx_session_t *smc_session;
 
 pthread_t sync_handler;
 int smc_terminate = 0;
@@ -33,7 +36,8 @@ struct {
 	char *name;
 } options;
 
-#define TOKEN_FILE_PATH (CONFIG_DIR "accesstoken")
+#define ACCESSTOKEN_FILE_PATH (CONFIG_DIR "accesstoken")
+#define DEVID_FILE_PATH (CONFIG_DIR "device_id")
 #define HREAD_BUFSIZE 1024U
 
 static int hread(int fd, char **buf, size_t *size)
@@ -68,13 +72,13 @@ static int hread(int fd, char **buf, size_t *size)
 	}
 	assert(0);
 }
-static int save_token(char *token)
+static int save_config(const char *filepath, char *val)
 {
-	int ftoken = open(TOKEN_FILE_PATH, O_CREAT | O_WRONLY | O_TRUNC, 0600);
+	int ftoken = open(filepath, O_CREAT | O_WRONLY | O_TRUNC, 0600);
 	if (ftoken == -1)
 		return 1;
 
-	ssize_t n = write(ftoken, token, strlen(token));
+	ssize_t n = write(ftoken, val, strlen(val));
 	if (n == -1) {
 		close(ftoken);
 		return 1;
@@ -83,9 +87,9 @@ static int save_token(char *token)
 	close(ftoken);
 	return 0;
 }
-static int get_token(char **token)
+static int get_config(const char *filepath, char **val)
 {
-	int ftoken = open(TOKEN_FILE_PATH, O_RDONLY);
+	int ftoken = open(filepath, O_RDONLY);
 	if (ftoken == -1) {
 		if (errno == ENOENT)
 			return 1;
@@ -101,56 +105,12 @@ static int get_token(char **token)
 
 	if (hread(ftoken, &buf, &size) == -1)
 		return -1;
-	*token = buf;
+	*val = buf;
 
 	close(ftoken);
 	return 0;
 }
 
-static int ensure_login(void)
-{
-	int err;
-	char *token = NULL;
-	if (!options.username || !options.pass) {
-		err = get_token(&token);
-		if (err == -1) {
-			fprintf(stderr, "%s: could not check token file\n", __func__);
-			return 1;
-		} else if (err == 1) {
-			printf("unable to login: no username or password supplied\n");
-			free(token);
-			return 1;
-		}
-	} else if (options.username && options.pass) {
-		err = api_login(options.username, options.pass, NULL, &token, NULL, NULL);
-		if (err == -1) {
-			fprintf(stderr, "%s: login failed\n", __func__);
-			return 1;
-		} else if (err == 1) {
-			fprintf(stderr, "%s: login failed, %s (%i)\n",
-					__func__, api_last_errmsg, api_last_code);
-			free(token);
-			return 1;
-		}
-
-		if (save_token(token)) {
-			fprintf(stderr, "%s: could not save token\n", __func__);
-			free(token);
-			return 1;
-		}
-	} else {
-		printf("unable to login: both username and password have to be supplied\n");
-		return 1;
-	}
-
-	if (api_set_access_token(token)) {
-		fprintf(stderr, "%s: could not set access token\n", __func__);
-		free(token);
-		return 1;
-	}
-	free(token);
-	return 0;
-}
 static int start_sync(void)
 {
 	if (pthread_mutex_init(&smc_synclock, NULL))
@@ -265,21 +225,25 @@ static int handle_event(uimode_t *mode, int ch)
 	return 0;
 }
 
-static void setup(void)
+static int initialize_matrix_account(void)
 {
-	if ((flog = open("smclog.txt", O_CREAT | O_WRONLY | O_TRUNC)) < 0)
-		exit(1);
-
-	int err;
-	if (api_init()) {
-		fprintf(stderr, "%s: Could not initialize api\n", __func__);
-		close(flog);
-		exit(1);
+	char *token = NULL;
+	if (get_config(ACCESSTOKEN_FILE_PATH, &token)) {
+		fprintf(stderr, "%s: Error while opening %s\n", __func__, ACCESSTOKEN_FILE_PATH);
+		return 1;
 	}
 
-	if (ensure_login()) {
-		fprintf(stderr, "%s: Failed to login\n", __func__);
-		goto err_api_free;
+	char *devid = NULL;
+	if (get_config(DEVID_FILE_PATH, &devid)) {
+		fprintf(stderr, "%s: Error while opening %s\n", __func__, DEVID_FILE_PATH);
+		return 1;
+	}
+
+	smc_session = mtx_create_session("localhost:8080",
+			options.username, options.pass, token, devid);
+	if (!smc_session) {
+		fprintf(stderr, "%s: Could not create matrix session\n", __func__);
+		return 1;
 	}
 
 	list_init(&smc_rooms[ROOMTYPE_JOINED]);
@@ -287,12 +251,37 @@ static void setup(void)
 	list_init(&smc_rooms[ROOMTYPE_LEFT]);
 	if (update()) {
 		fprintf(stderr, "%s: Failed to perform initial sync\n", __func__);
-		goto err_rooms_free;
+		list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
+		list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
+		list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
+		mtx_cleanup_session(smc_session);
+		return 1;
+	}
+
+	return 0;
+}
+static void cleanup_matrix_account(void)
+{
+	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
+	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
+
+	mtx_cleanup_session(smc_session);
+}
+
+static void setup(void)
+{
+	if ((flog = open("smclog.txt", O_CREAT | O_WRONLY | O_TRUNC)) < 0)
+		exit(1);
+
+	if (initialize_matrix_account()) {
+		close(flog);
+		exit(1);
 	}
 
 	if (!initscr()) {
 		fprintf(stderr, "%s: failed to init ncurses\n", __func__);
-		goto err_rooms_free;
+		goto err_matrix_account_free;
 	}
 
 	if (cbreak() || noecho() || nodelay(stdscr, TRUE) || curs_set(0) == ERR) {
@@ -315,12 +304,8 @@ err_room_menu_free:
 	room_menu_cleanup();
 err_curses_free:
 	endwin();
-err_rooms_free:
-	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
-err_api_free:
-	api_cleanup();
+err_matrix_account_free:
+	cleanup_matrix_account();
 	close(flog);
 	exit(1);
 }
