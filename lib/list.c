@@ -1,12 +1,9 @@
 #include "lib/list.h"
 
-void __list_add(listentry_t *prev, listentry_t *next, listentry_t *e)
+void __list_del(listentry_t *prev, listentry_t *next)
 {
-	prev->next = e;
-	e->prev = prev;
-
-	e->next = next;
-	next->prev = e;
+	prev->next = next;
+	next->prev = prev;
 }
 void __list_concat(const listentry_t *list, listentry_t *prev, listentry_t *next)
 {
@@ -35,6 +32,15 @@ void list_concat_head(listentry_t *head, listentry_t *list)
 	if (!list_empty(list))
 		__list_concat(list, head, head->next);
 }
+
+void __list_add(listentry_t *prev, listentry_t *next, listentry_t *e)
+{
+	prev->next = e;
+	e->prev = prev;
+
+	e->next = next;
+	next->prev = e;
+}
 void list_add(listentry_t *head, listentry_t *e)
 {
 	__list_add(head->prev, head, e);
@@ -42,6 +48,11 @@ void list_add(listentry_t *head, listentry_t *e)
 void list_add_head(listentry_t *head, listentry_t *e)
 {
 	__list_add(head, head->next, e);
+}
+
+void list_del(listentry_t *e)
+{
+	__list_del(e->prev, e->next);
 }
 void list_replace(struct listentry_t *old, struct listentry_t *new)
 {

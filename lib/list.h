@@ -16,8 +16,10 @@ typedef struct listentry_t listentry_t;
 
 void list_init(listentry_t *e);
 void list_concat(listentry_t *e1, listentry_t *e2);
+
 void list_add(listentry_t *head, listentry_t *e);
 void list_add_head(listentry_t *head, listentry_t *e);
+void list_del(listentry_t *e);
 void list_replace(struct listentry_t *old, struct listentry_t *new);
 
 size_t list_length(listentry_t *head);

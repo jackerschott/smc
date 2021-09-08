@@ -23,15 +23,4 @@
 
 #include <json-c/json_types.h>
 
-#define TRANSACTION_ID_SIZE 44
-
-extern const char *crypto_algorithms_msg[2];
-
-int generate_transaction_id(char *id);
-
-int create_device_keys(json_object **_keys);
-int create_one_time_keys(json_object **_keys);
-
-int sign_json(json_object *obj, const char *userid, const char *keyident);
-
 #endif /* ENCRYPTION_H */

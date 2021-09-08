@@ -1,5 +1,8 @@
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef MTX_UTIL_H
+#define MTX_UTIL_H
+
+#include <stddef.h>
+#include <stdint.h>
 
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
@@ -15,4 +18,12 @@
 
 #define UNUSED(x) (void)(x)
 
-#endif /* UTIL_H */
+int strrpl(char **dest, const char *src);
+
+int str2enum(const char *s, const char **strs, int nstrs);
+
+int getrandom_(void *buf, size_t len);
+
+void base64url(const uint8_t *src, size_t n, uint8_t *dest);
+
+#endif /* MTX_UTIL_H */

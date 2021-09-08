@@ -32,9 +32,17 @@ int json_get_object_as_string_(const json_object *obj, const char *key, char **s
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
 		return 1;
-	char *s = strdup(json_object_get_string(tmp));
+
+	const char *_s = json_object_get_string(tmp);
+	if (!_s) {
+		*str = NULL;
+		return 0;
+	}
+
+	char *s = realloc(*str, strlen(_s) + 1);
 	if (!s)
 		return -1;
+	strcpy(s, _s);
 	*str = s;
 	return 0;
 }
@@ -52,17 +60,65 @@ int json_get_object_as_enum_(const json_object *obj, const char *key,
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
 		return 1;
+
 	const char *s = json_object_get_string(tmp);
-	for (int i = 0; i < n; ++i) {
-		if (strcmp(strs[i], s) == 0) {
-			*e = i;
-			return 0;
+	assert(s);
+
+	*e = str2enum(s, strs, n);
+	return 0;
+}
+int json_get_object_as_string_array_(const json_object *obj, const char *key, char ***_strs)
+{
+	json_object *tmp;
+	if (!json_object_object_get_ex(obj, key, &tmp))
+		return 1;
+
+	if (*_strs) {
+		for (size_t i = 0; (*_strs)[i]; ++i) {
+			free((*_strs)[i]);
 		}
 	}
-	assert(0);
+
+	size_t n = json_object_array_length(obj);
+	char **strs = realloc(*_strs, (n + 1) * sizeof(*strs));
+	if (!strs)
+		return -1;
+	memset(strs, 0, (n + 1) * sizeof(*strs));
+
+	for (size_t i = 0; i < n; ++i) {
+		json_object *element = json_object_array_get_idx(obj, i);
+		char *s = strdup(json_object_get_string(element));
+		if (!s)
+			goto memerr_free_array;
+
+		strs[i] = s;
+	}
+
+	*_strs = strs;
+	return 0;
+
+memerr_free_array:
+	for (size_t i = 0; strs[i] != NULL; ++i) {
+		free(strs[i]);
+	}
+	return -1;
+}
+int json_get_object_as_object_(const json_object *obj, const char *key, json_object **o)
+{
+	json_object *tmp;
+	if (!json_object_object_get_ex(obj, key, &tmp))
+		return 1;
+
+	json_object_put(*o);
+
+	*o = NULL;
+	if (json_object_deep_copy(tmp, o, NULL))
+		return -1;
+
+	return 0;
 }
 
-int json_object_add_int_(json_object *obj, const char *key, int i)
+int json_add_int_(json_object *obj, const char *key, int i)
 {
 	json_object *intobj = json_object_new_int(i);
 	if (!intobj)
@@ -73,7 +129,7 @@ int json_object_add_int_(json_object *obj, const char *key, int i)
 
 	return 0;
 }
-int json_object_add_string_(json_object *obj, const char *key, const char *str)
+int json_add_string_(json_object *obj, const char *key, const char *str)
 {
 	if (!str)
 		return 1;
@@ -87,7 +143,7 @@ int json_object_add_string_(json_object *obj, const char *key, const char *str)
 
 	return 0;
 }
-int json_object_add_enum_(json_object *obj, const char *key, int e, const char **strs)
+int json_add_enum_(json_object *obj, const char *key, int e, const char **strs)
 {
 	if (!strs)
 		return 1;
@@ -101,7 +157,7 @@ int json_object_add_enum_(json_object *obj, const char *key, int e, const char *
 
 	return 0;
 }
-int json_object_add_string_array_(json_object *obj, const char *key, int n, const char **str)
+int json_add_string_array_(json_object *obj, const char *key, int n, const char **str)
 {
 	if (!str)
 		return 1;
@@ -120,7 +176,7 @@ int json_object_add_string_array_(json_object *obj, const char *key, int n, cons
 	}
 	return 0;
 }
-int json_object_add_array_(json_object *obj, const char *key, json_object **array)
+int json_add_array_(json_object *obj, const char *key, json_object **array)
 {
 	json_object *_array = json_object_new_object();
 	if (!_array)
@@ -134,7 +190,7 @@ int json_object_add_array_(json_object *obj, const char *key, json_object **arra
 	*array = _array;
 	return 0;
 }
-int json_object_add_object_(json_object *obj, const char *key, json_object **o)
+int json_add_object_(json_object *obj, const char *key, json_object **o)
 {
 	json_object *_o = json_object_new_object();
 	if (!_o)
