@@ -256,6 +256,22 @@ static int get_ev_name(const json_object *obj, ev_name_t **_name)
 	return 0;
 }
 
+static int get_ev_topic(const json_object *obj, ev_topic_t **_topic)
+{
+	ev_topic_t *topic = malloc(sizeof(*topic));
+	if (!topic)
+		return 1;
+	memset(topic, 0, sizeof(*topic));
+
+	if (json_get_object_as_string_(obj, "topic", &topic->topic)) {
+		free(topic);
+		return 1;
+	}
+
+	*_topic = topic;
+	return 0;
+}
+
 static int get_avatar_image_info(const json_object *obj, avatar_image_info_t *info)
 {
 	json_get_object_as_uint64_(obj, "h", &info->h);
@@ -446,6 +462,9 @@ static int get_event_content(const json_object *obj, eventtype_t type, void **co
 		break;
 	case EVENT_NAME:
 		err = get_ev_name(obj, (ev_name_t **)content);
+		break;
+	case EVENT_TOPIC:
+		err = get_ev_topic(obj, (ev_topic_t **)content);
 		break;
 	case EVENT_AVATAR:
 		err = get_ev_avatar(obj, (ev_avatar_t **)content);
@@ -784,7 +803,8 @@ static int update_left_room_history(const json_object *obj, room_history_t *hist
 
 	return 0;
 }
-int update_room_histories(json_object *obj, listentry_t *joined, listentry_t *invited, listentry_t *left)
+int update_room_histories(json_object *obj, listentry_t *joined,
+		listentry_t *invited, listentry_t *left)
 {
 	json_object *join;
 	if (json_object_object_get_ex(obj, "join", &join)) {

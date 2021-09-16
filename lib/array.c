@@ -46,6 +46,11 @@ char **strarr_dup(char **arr)
 }
 int strarr_rpl(char ***dest, char **src)
 {
+	if (!src) {
+		*dest = NULL;
+		return 0;
+	}
+
 	char **arr = strarr_dup(src);
 	if (!arr)
 		return 1;

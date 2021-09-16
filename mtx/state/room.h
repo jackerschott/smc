@@ -18,6 +18,7 @@ typedef enum {
 	EVENT_POWERLEVELS,
 
 	EVENT_NAME,
+	EVENT_TOPIC,
 	EVENT_AVATAR,
 
 	EVENT_ENCRYPTION,
@@ -45,6 +46,7 @@ static const char *eventtype_strs[] = {
 	"m.room.power_levels",
 
 	"m.room.name",
+	"m.room.topic",
 	"m.room.avatar",
 
 	"m.room.encryption",
@@ -134,18 +136,17 @@ typedef struct {
 	int level;
 } user_powerlevel_t;
 typedef struct {
-	// ban, events, events_default, kick, redact, state_default, users, users_default
-	int ban; //
+	int ban;
 	int invite;
-	int kick; //
-	int redact; //
-	int statedefault; //
+	int kick;
+	int redact;
+	int statedefault;
 
-	listentry_t events; //
-	int eventdefault; //
+	listentry_t events;
+	int eventdefault;
 
-	listentry_t users; //
-	int usersdefault; //
+	listentry_t users;
+	int usersdefault;
 
 	int roomnotif;
 } ev_powerlevels_t;
@@ -158,6 +159,10 @@ typedef struct {
 typedef struct {
 	char *name;
 } ev_name_t;
+
+typedef struct {
+	char *topic;
+} ev_topic_t;
 
 typedef struct {
 	size_t h;
@@ -427,9 +432,7 @@ void free_message_text(message_text_t *msg);
 void free_message_emote(message_emote_t *msg);
 void free_message_content(msg_type_t type, void *content);
 void free_ev_message(ev_message_t *msg);
-message_text_t *duplicate_message_text(message_text_t *msg);
-message_emote_t *duplicate_message_emote(message_emote_t *emote);
-void *duplicate_message_content(msg_type_t type, void *content);
+void *dup_message_content(msg_type_t type, void *content);
 
 void free_event_content(eventtype_t type, void *content);
 void free_event(event_t *event);
@@ -453,6 +456,7 @@ void free_room_direct_state_context(_room_t *r);
 /* general */
 void free_room(_room_t *r);
 _room_t *new_room(const char *id, room_context_t context);
+_room_t *dup_room(_room_t *room);
 void clear_room_direct_state(_room_t *r);
 
 #endif /* HISTORY_H */

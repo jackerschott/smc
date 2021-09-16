@@ -148,6 +148,16 @@ int apply_event_name(const event_t *event, _room_t *r)
 	return 0;
 }
 
+int apply_event_topic(const event_t *event, _room_t *r)
+{
+	ev_topic_t *topic = event->content;
+
+	if (topic->topic && strrpl(&r->topic, topic->topic))
+		return 1;
+
+	return 0;
+}
+
 int apply_event_avatar(const event_t *event, _room_t *r)
 {
 	ev_avatar_t *avatar = event->content;
@@ -214,7 +224,7 @@ int apply_event_message(const event_t *event, _room_t *r)
 	if (strrpl(&m->sender, event->sender))
 		return 1;
 
-	void *content = duplicate_message_content(msg->type, msg->content);
+	void *content = dup_message_content(msg->type, msg->content);
 	if (!content)
 		return 1;
 	m->content = content;
@@ -255,6 +265,9 @@ int apply_statevent(const event_t *event, _room_t *r)
 		break;
 	case EVENT_NAME:
 		err = apply_event_name(event, r);
+		break;
+	case EVENT_TOPIC:
+		err = apply_event_topic(event, r);
 		break;
 	case EVENT_AVATAR:
 		err = apply_event_avatar(event, r);

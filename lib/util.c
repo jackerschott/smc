@@ -2,12 +2,19 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <stdio.h> // debug
+
 #include "lib/util.h"
 
 #include <sys/random.h>
 
 int strrpl(char **dest, const char *src)
 {
+	if (!src) {
+		*dest = NULL;
+		return 0;
+	}
+
 	char *s = strdup(src);
 	if (!s)
 		return 1;
@@ -24,6 +31,7 @@ int str2enum(const char *s, const char **strs, int nstrs)
 			return i;
 		}
 	}
+	printf("%s\n", s);
 	assert(0);
 }
 

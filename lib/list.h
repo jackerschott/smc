@@ -32,13 +32,30 @@ int list_empty(listentry_t *head);
 
 #define list_free(ptr, type, member, free_entry) 				\
 	do { 									\
+		if (!(ptr)->next && !(ptr)->prev) 				\
+			break; 							\
+										\
 		listentry_t *e = (ptr)->next; 					\
 		while (e != (ptr)) { 						\
 			listentry_t *next = e->next; 				\
-			type *entry = list_entry_content(e, type, member);		\
+			type *entry = list_entry_content(e, type, member);	\
 			free_entry(entry); 					\
 			e = next; 						\
 		} 								\
 	} while (0)
+
+#define list_dup(dest, src, type, member, dup_entry_content) 			\
+	do { 									\
+		list_init((dest)); 						\
+		for (listentry_t *e = (src)->next; e != (src); e = e->next) { 	\
+			type *content = list_entry_content(e, type, member); 	\
+			type *newcontent = dup_entry_content(content); 	\
+			if (!newcontent) { 					\
+				(dest) = NULL; 					\
+				break; 						\
+			} 							\
+			list_add((dest), &newcontent->entry); 			\
+		} 								\
+	}  while (0)
 
 #endif /* LIST_H */
