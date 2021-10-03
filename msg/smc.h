@@ -6,15 +6,11 @@
 
 #include <pthread.h>
 
-#include "mtx/mtx.h"
-
-//#define SYSERR() do { \
-//	fprintf(stderr, "%s:%d/%s: ", __FILE__, __LINE__, __func__); \
-//	fprintf(stderr, "%i ", errno); \
-//	perror(NULL); \
-//} while (0);
+#include "mtx/types.h"
 
 extern mtx_session_t *smc_session;
+extern mtx_room_t *smc_cur_room;
+
 extern int smc_terminate;
 
 extern int flog;

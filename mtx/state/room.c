@@ -6,10 +6,10 @@
 #include "lib/array.h"
 #include "mtx/state/room.h"
 
-event_t *dup_event(event_t *event);
+mtx_event_t *dup_event(mtx_event_t *event);
 
 /* history types */
-void free_ev_canonalias(ev_canonalias_t *canonalias)
+void free_ev_canonalias(mtx_ev_canonalias_t *canonalias)
 {
 	if (!canonalias)
 		return;
@@ -20,11 +20,11 @@ void free_ev_canonalias(ev_canonalias_t *canonalias)
 	}
 	free(canonalias);
 }
-ev_canonalias_t *dup_ev_canonalias(ev_canonalias_t *canonalias)
+mtx_ev_canonalias_t *dup_ev_canonalias(mtx_ev_canonalias_t *canonalias)
 {
 	assert(canonalias);
 
-	ev_canonalias_t *ca = malloc(sizeof(*ca));
+	mtx_ev_canonalias_t *ca = malloc(sizeof(*ca));
 	if (!ca)
 		return NULL;
 	memset(ca, 0, sizeof(*ca));
@@ -42,7 +42,7 @@ err_free_canonalias:
 	return NULL;
 }
 
-void free_ev_create(ev_create_t *create)
+void free_ev_create(mtx_ev_create_t *create)
 {
 	if (!create)
 		return;
@@ -53,11 +53,11 @@ void free_ev_create(ev_create_t *create)
 	free(create->prev_last_eventid);
 	free(create);
 }
-ev_create_t *dup_ev_create(ev_create_t *create)
+mtx_ev_create_t *dup_ev_create(mtx_ev_create_t *create)
 {
 	assert(create);
 
-	ev_create_t *c = malloc(sizeof(*c));
+	mtx_ev_create_t *c = malloc(sizeof(*c));
 	if (!c)
 		return NULL;
 	memset(c, 0, sizeof(*c));
@@ -83,18 +83,18 @@ err_free_create:
 	return NULL;
 }
 
-void free_ev_joinrules(ev_joinrules_t *joinrules)
+void free_ev_joinrules(mtx_ev_joinrules_t *joinrules)
 {
 	if (!joinrules)
 		return;
 
 	free(joinrules);
 }
-ev_joinrules_t *dup_ev_joinrules(ev_joinrules_t *joinrules)
+mtx_ev_joinrules_t *dup_ev_joinrules(mtx_ev_joinrules_t *joinrules)
 {
 	assert(joinrules);
 
-	ev_joinrules_t *rule = malloc(sizeof(*rule));
+	mtx_ev_joinrules_t *rule = malloc(sizeof(*rule));
 	if (!rule)
 		return NULL;
 	memset(rule, 0, sizeof(*rule));
@@ -104,16 +104,16 @@ ev_joinrules_t *dup_ev_joinrules(ev_joinrules_t *joinrules)
 	return rule;
 }
 
-void free_ev_member(ev_member_t *member)
+void free_ev_member(mtx_ev_member_t *member)
 {
 	if (!member)
 		return;
 
 	free(member->avatarurl);
 	free(member->displayname);
-	list_free(&member->invite_room_events, event_t, entry, free_event);
+	mtx_list_free(&member->invite_room_events, mtx_event_t, entry, free_event);
 
-	thirdparty_invite_t tpinvite = member->thirdparty_invite;
+	mtx_thirdparty_invite_t tpinvite = member->thirdparty_invite;
 	free(tpinvite.displayname);
 	free(tpinvite.mxid);
 	json_object_put(tpinvite.signatures);
@@ -121,11 +121,11 @@ void free_ev_member(ev_member_t *member)
 
 	free(member);
 }
-ev_member_t *dup_ev_member(ev_member_t *member)
+mtx_ev_member_t *dup_ev_member(mtx_ev_member_t *member)
 {
 	assert(member);
 
-	ev_member_t *m = malloc(sizeof(*m));
+	mtx_ev_member_t *m = malloc(sizeof(*m));
 	if (!m)
 		return NULL;
 	memset(m, 0, sizeof(*m));
@@ -140,8 +140,8 @@ ev_member_t *dup_ev_member(ev_member_t *member)
 
 	m->isdirect = member->isdirect;
 
-	thirdparty_invite_t *invite = &member->thirdparty_invite;
-	thirdparty_invite_t *newinvite = &m->thirdparty_invite;
+	mtx_thirdparty_invite_t *invite = &member->thirdparty_invite;
+	mtx_thirdparty_invite_t *newinvite = &m->thirdparty_invite;
 	if (strrpl(&newinvite->displayname, invite->displayname))
 		goto err_free_member;
 
@@ -155,8 +155,8 @@ ev_member_t *dup_ev_member(ev_member_t *member)
 	if (strrpl(&newinvite->token, invite->token))
 		goto err_free_member;
 
-	listentry_t *events = &m->invite_room_events;
-	list_dup(events, &member->invite_room_events, event_t, entry, dup_event);
+	mtx_listentry_t *events = &m->invite_room_events;
+	mtx_list_dup(events, &member->invite_room_events, mtx_event_t, entry, dup_event);
 	if (!events)
 		goto err_free_member;
 
@@ -167,16 +167,16 @@ err_free_member:
 	return NULL;
 }
 
-void free_event_powerlevel(event_powerlevel_t *plevel)
+void free_event_powerlevel(mtx_event_powerlevel_t *plevel)
 {
 	if (!plevel)
 		return;
 
 	free(plevel);
 }
-event_powerlevel_t *dup_event_powerlevel(event_powerlevel_t *plevel)
+mtx_event_powerlevel_t *dup_event_powerlevel(mtx_event_powerlevel_t *plevel)
 {
-	event_powerlevel_t *p = malloc(sizeof(*p));
+	mtx_event_powerlevel_t *p = malloc(sizeof(*p));
 	if (!p)
 		return NULL;
 	memset(p, 0, sizeof(*p));
@@ -186,17 +186,17 @@ event_powerlevel_t *dup_event_powerlevel(event_powerlevel_t *plevel)
 
 	return p;
 }
-event_powerlevel_t *find_event_powerlevel(const listentry_t *plevels, eventtype_t type)
+mtx_event_powerlevel_t *find_event_powerlevel(const mtx_listentry_t *plevels, mtx_eventtype_t type)
 {
-	for (listentry_t *e = plevels->next; e != plevels; e = e->next) {
-		event_powerlevel_t *plevel = list_entry_content(e, event_powerlevel_t, entry);
+	for (mtx_listentry_t *e = plevels->next; e != plevels; e = e->next) {
+		mtx_event_powerlevel_t *plevel = mtx_list_entry_content(e, mtx_event_powerlevel_t, entry);
 		if (plevel->type == type)
 			return plevel;
 	}
 
 	return NULL;
 }
-void free_user_powerlevel(user_powerlevel_t *plevel)
+void free_user_powerlevel(mtx_user_powerlevel_t *plevel)
 {
 	if (!plevel)
 		return;
@@ -204,9 +204,9 @@ void free_user_powerlevel(user_powerlevel_t *plevel)
 	free(plevel->id);
 	free(plevel);
 }
-user_powerlevel_t *dup_user_powerlevel(user_powerlevel_t *plevel)
+mtx_user_powerlevel_t *dup_user_powerlevel(mtx_user_powerlevel_t *plevel)
 {
-	user_powerlevel_t *p = malloc(sizeof(*p));
+	mtx_user_powerlevel_t *p = malloc(sizeof(*p));
 	if (!p)
 		return NULL;
 	memset(p, 0, sizeof(*p));
@@ -221,30 +221,30 @@ err_free_powerlevel:
 	free_user_powerlevel(p);
 	return NULL;
 }
-user_powerlevel_t *find_user_powerlevel(const listentry_t *plevels, const char *id)
+mtx_user_powerlevel_t *find_user_powerlevel(const mtx_listentry_t *plevels, const char *id)
 {
-	for (listentry_t *e = plevels->next; e != plevels; e = e->next) {
-		user_powerlevel_t *plevel = list_entry_content(e, user_powerlevel_t, entry);
+	for (mtx_listentry_t *e = plevels->next; e != plevels; e = e->next) {
+		mtx_user_powerlevel_t *plevel = mtx_list_entry_content(e, mtx_user_powerlevel_t, entry);
 		if (strcmp(plevel->id, id) == 0)
 			return plevel;
 	}
 
 	return NULL;
 }
-void free_ev_powerlevels(ev_powerlevels_t *powerlevels)
+void free_ev_powerlevels(mtx_ev_powerlevels_t *powerlevels)
 {
 	if (!powerlevels)
 		return;
 
-	list_free(&powerlevels->events, event_powerlevel_t, entry, free_event_powerlevel);
-	list_free(&powerlevels->users, user_powerlevel_t, entry, free_user_powerlevel);
+	mtx_list_free(&powerlevels->events, mtx_event_powerlevel_t, entry, free_event_powerlevel);
+	mtx_list_free(&powerlevels->users, mtx_user_powerlevel_t, entry, free_user_powerlevel);
 	free(powerlevels);
 }
-ev_powerlevels_t *dup_ev_powerlevels(ev_powerlevels_t *powerlevels)
+mtx_ev_powerlevels_t *dup_ev_powerlevels(mtx_ev_powerlevels_t *powerlevels)
 {
 	assert(powerlevels);
 	
-	ev_powerlevels_t *levels = malloc(sizeof(*levels));
+	mtx_ev_powerlevels_t *levels = malloc(sizeof(*levels));
 	if (!levels)
 		return NULL;
 	memset(levels, 0, sizeof(*levels));
@@ -255,14 +255,14 @@ ev_powerlevels_t *dup_ev_powerlevels(ev_powerlevels_t *powerlevels)
 	levels->redact = powerlevels->redact;
 	levels->statedefault = powerlevels->statedefault;
 
-	listentry_t *events = &levels->events;
-	list_dup(events, &powerlevels->events, event_powerlevel_t, entry, dup_event_powerlevel);
+	mtx_listentry_t *events = &levels->events;
+	mtx_list_dup(events, &powerlevels->events, mtx_event_powerlevel_t, entry, dup_event_powerlevel);
 	if (!events)
 		goto err_free_powerlevels;
 	levels->eventdefault = powerlevels->eventdefault;
 
-	listentry_t *users = &levels->users;
-	list_dup(users, &powerlevels->users, user_powerlevel_t, entry, dup_user_powerlevel);
+	mtx_listentry_t *users = &levels->users;
+	mtx_list_dup(users, &powerlevels->users, mtx_user_powerlevel_t, entry, dup_user_powerlevel);
 	if (!users)
 		goto err_free_powerlevels;
 	levels->usersdefault = powerlevels->usersdefault;
@@ -276,7 +276,7 @@ err_free_powerlevels:
 	return NULL;
 }
 
-void free_ev_redaction(ev_redaction_t *redaction)
+void free_ev_redaction(mtx_ev_redaction_t *redaction)
 {
 	if (!redaction)
 		return;
@@ -284,11 +284,11 @@ void free_ev_redaction(ev_redaction_t *redaction)
 	free(redaction->reason);
 	free(redaction);
 }
-ev_redaction_t *dup_ev_redaction(ev_redaction_t *redaction)
+mtx_ev_redaction_t *dup_ev_redaction(mtx_ev_redaction_t *redaction)
 {
 	assert(redaction);
 
-	ev_redaction_t *r = malloc(sizeof(*r));
+	mtx_ev_redaction_t *r = malloc(sizeof(*r));
 	if (!r)
 		return NULL;
 	memset(r, 0, sizeof(*r));
@@ -303,7 +303,7 @@ err_free_redaction:
 	return NULL;
 }
 
-void free_ev_name(ev_name_t *name)
+void free_ev_name(mtx_ev_name_t *name)
 {
 	if (!name)
 		return;
@@ -311,11 +311,11 @@ void free_ev_name(ev_name_t *name)
 	free(name->name);
 	free(name);
 }
-ev_name_t *dup_ev_name(ev_name_t *name)
+mtx_ev_name_t *dup_ev_name(mtx_ev_name_t *name)
 {
 	assert(name);
 
-	ev_name_t *n = malloc(sizeof(*n));
+	mtx_ev_name_t *n = malloc(sizeof(*n));
 	if (!n)
 		return NULL;
 	memset(n, 0, sizeof(*n));
@@ -330,7 +330,7 @@ err_free_name:
 	return NULL;
 }
 
-void free_ev_topic(ev_topic_t *topic)
+void free_ev_topic(mtx_ev_topic_t *topic)
 {
 	if (!topic)
 		return;
@@ -338,11 +338,11 @@ void free_ev_topic(ev_topic_t *topic)
 	free(topic->topic);
 	free(topic);
 }
-ev_topic_t *dup_ev_topic(ev_topic_t *topic)
+mtx_ev_topic_t *dup_ev_topic(mtx_ev_topic_t *topic)
 {
 	assert(topic);
 
-	ev_topic_t *n = malloc(sizeof(*n));
+	mtx_ev_topic_t *n = malloc(sizeof(*n));
 	if (!n)
 		return NULL;
 	memset(n, 0, sizeof(*n));
@@ -357,7 +357,7 @@ err_free_topic:
 	return NULL;
 }
 
-void free_ev_avatar(ev_avatar_t *avatar)
+void free_ev_avatar(mtx_ev_avatar_t *avatar)
 {
 	if (!avatar)
 		return;
@@ -369,11 +369,11 @@ void free_ev_avatar(ev_avatar_t *avatar)
 	free(avatar->thumbinfo.mimetype);
 	free(avatar);
 }
-ev_avatar_t *dup_ev_avatar(ev_avatar_t *avatar)
+mtx_ev_avatar_t *dup_ev_avatar(mtx_ev_avatar_t *avatar)
 {
 	assert(avatar);
 
-	ev_avatar_t *av = malloc(sizeof(*av));
+	mtx_ev_avatar_t *av = malloc(sizeof(*av));
 	if (!av)
 		return NULL;
 	memset(av, 0, sizeof(*av));
@@ -403,16 +403,16 @@ err_free_avatar:
 	return NULL;
 }
 
-void free_ev_encryption(ev_encryption_t *encryption)
+void free_ev_encryption(mtx_ev_encryption_t *encryption)
 {
 	free(encryption->algorithm);
 	free(encryption);
 }
-ev_encryption_t *dup_ev_encryption(ev_encryption_t *encryption)
+mtx_ev_encryption_t *dup_ev_encryption(mtx_ev_encryption_t *encryption)
 {
 	assert(encryption);
 
-	ev_encryption_t *crypt = malloc(sizeof(*crypt));
+	mtx_ev_encryption_t *crypt = malloc(sizeof(*crypt));
 	if (!crypt)
 		return NULL;
 	memset(crypt, 0, sizeof(*crypt));
@@ -429,15 +429,15 @@ err_free_encryption:
 	return NULL;
 }
 
-void free_ev_history_visibility(ev_history_visibility_t *visib)
+void free_ev_history_visibility(mtx_ev_history_visibility_t *visib)
 {
 	free(visib);
 }
-ev_history_visibility_t *dup_ev_history_visibility(ev_history_visibility_t *visib)
+mtx_ev_history_visibility_t *dup_ev_history_visibility(mtx_ev_history_visibility_t *visib)
 {
 	assert(visib);
 
-	ev_history_visibility_t *v = malloc(sizeof(*v));
+	mtx_ev_history_visibility_t *v = malloc(sizeof(*v));
 	if (!v)
 		return NULL;
 	memset(v, 0, sizeof(*v));
@@ -447,7 +447,7 @@ ev_history_visibility_t *dup_ev_history_visibility(ev_history_visibility_t *visi
 	return v;
 }
 
-void free_message_text(message_text_t *msg)
+void free_message_text(mtx_message_text_t *msg)
 {
 	if (!msg)
 		return;
@@ -456,12 +456,12 @@ void free_message_text(message_text_t *msg)
 	free(msg->fmtbody);
 	free(msg);
 }
-message_text_t *dup_message_text(message_text_t *msg)
+mtx_message_text_t *dup_message_text(mtx_message_text_t *msg)
 {
 	if (!msg)
 		return NULL;
 
-	message_text_t *m = malloc(sizeof(*m));
+	mtx_message_text_t *m = malloc(sizeof(*m));
 	if (!m)
 		return NULL;
 	memset(m, 0, sizeof(*m));
@@ -478,7 +478,7 @@ err_free_msg:
 	free_message_text(m);
 	return NULL;
 }
-void free_message_emote(message_emote_t *msg)
+void free_message_emote(mtx_message_emote_t *msg)
 {
 	if (!msg)
 		return;
@@ -487,12 +487,12 @@ void free_message_emote(message_emote_t *msg)
 	free(msg->fmtbody);
 	free(msg);
 }
-message_emote_t *dup_message_emote(message_emote_t *msg)
+mtx_message_emote_t *dup_message_emote(mtx_message_emote_t *msg)
 {
 	if (!msg)
 		return NULL;
 
-	message_emote_t *m = malloc(sizeof(*m));
+	mtx_message_emote_t *m = malloc(sizeof(*m));
 	if (!m)
 		return NULL;
 	memset(m, 0, sizeof(*m));
@@ -510,7 +510,7 @@ err_free_msg:
 	return NULL;
 
 }
-void free_message_content(msg_type_t type, void *content)
+void free_message_content(mtx_msg_type_t type, void *content)
 {
 	if (!content)
 		return;
@@ -526,7 +526,7 @@ void free_message_content(msg_type_t type, void *content)
 		assert(0);
 	}
 }
-void *dup_message_content(msg_type_t type, void *content)
+void *dup_message_content(mtx_msg_type_t type, void *content)
 {
 	assert(content);
 
@@ -546,7 +546,7 @@ void *dup_message_content(msg_type_t type, void *content)
 
 	return c;
 }
-void free_ev_message(ev_message_t *msg)
+void free_ev_message(mtx_ev_message_t *msg)
 {
 	if (!msg)
 		return;
@@ -555,12 +555,12 @@ void free_ev_message(ev_message_t *msg)
 	free_message_content(msg->type, msg->content);
 	free(msg);
 }
-ev_message_t *dup_ev_message(ev_message_t *msg)
+mtx_ev_message_t *dup_ev_message(mtx_ev_message_t *msg)
 {
 	if (!msg)
 		return NULL;
 
-	ev_message_t *m = malloc(sizeof(*m));
+	mtx_ev_message_t *m = malloc(sizeof(*m));
 	if (!m)
 		return NULL;
 	memset(m, 0, sizeof(*m));
@@ -583,7 +583,7 @@ err_free_message:
 	return NULL;
 }
 
-void free_event_content(eventtype_t type, void *content)
+void free_event_content(mtx_eventtype_t type, void *content)
 {
 	switch (type) {
 	case EVENT_CANONALIAS:
@@ -623,7 +623,7 @@ void free_event_content(eventtype_t type, void *content)
 		assert(0);
 	}
 }
-void free_event(event_t *event)
+void free_event(mtx_event_t *event)
 {
 	if (!event)
 		return;
@@ -643,14 +643,14 @@ void free_event(event_t *event)
 
 	free(event);
 }
-void free_event_chunk(event_chunk_t *chunk)
+void free_event_chunk(mtx_event_chunk_t *chunk)
 {
 	if (!chunk)
 		return;
 
-	list_free(&chunk->events, event_t, entry, free_event);
+	mtx_list_free(&chunk->events, mtx_event_t, entry, free_event);
 }
-void *dup_event_content(eventtype_t type, void *content)
+void *dup_event_content(mtx_eventtype_t type, void *content)
 {
 	assert(content);
 
@@ -700,11 +700,11 @@ void *dup_event_content(eventtype_t type, void *content)
 
 	return c;
 }
-event_t *dup_event(event_t *event)
+mtx_event_t *dup_event(mtx_event_t *event)
 {
 	assert(event);
 
-	event_t *ev = malloc(sizeof(*ev));
+	mtx_event_t *ev = malloc(sizeof(*ev));
 	if (!ev)
 		return NULL;
 	memset(ev, 0, sizeof(*ev));
@@ -722,7 +722,7 @@ event_t *dup_event(event_t *event)
 	ev->age = event->age;
 
 	if (event->redactreason) {
-		event_t *redactreason = dup_event(event->redactreason);
+		mtx_event_t *redactreason = dup_event(event->redactreason);
 		if (!redactreason)
 			goto err_free_event;
 		ev->redactreason = redactreason;
@@ -760,21 +760,21 @@ err_free_event:
 	free_event(ev);
 	return NULL;
 }
-event_chunk_t *dup_event_chunk(event_chunk_t *chunk)
+mtx_event_chunk_t *dup_event_chunk(mtx_event_chunk_t *chunk)
 {
 	assert(chunk);
 
-	event_chunk_t *c = malloc(sizeof(*c));
+	mtx_event_chunk_t *c = malloc(sizeof(*c));
 	if (!c)
 		return NULL;
 	memset(c, 0, sizeof(*c));
-	list_init(&c->events);
+	mtx_list_init(&c->events);
 
 	c->type = chunk->type;
 
-	listentry_t *dest = &c->events;
-	list_dup(dest, &chunk->events, event_t, entry, dup_event);
-	if (!dest)
+	mtx_listentry_t *events = &c->events;
+	mtx_list_dup(events, &chunk->events, mtx_event_t, entry, dup_event);
+	if (!events)
 		goto err_free_chunk;
 
 	return c;
@@ -783,24 +783,24 @@ err_free_chunk:
 	free_event_chunk(c);
 	return NULL;
 }
-int is_roomevent(eventtype_t type)
+int is_roomevent(mtx_eventtype_t type)
 {
-	return EVENT_CANONALIAS <= type && type <= EVENT_REDACTION;
+	return EVENT_CANONALIAS <= type && type <= EVENT_MESSAGE;
 }
-int is_statevent(eventtype_t type)
+int is_statevent(mtx_eventtype_t type)
 {
 	return EVENT_CANONALIAS <= type && type <= EVENT_TOMBSTONE;
 }
-int is_message_event(eventtype_t type)
+int is_message_event(mtx_eventtype_t type)
 {
-	return EVENT_REDACTION <= type && type <= EVENT_REDACTION;
+	return EVENT_REDACTION <= type && type <= EVENT_MESSAGE;
 }
-event_t *find_event(listentry_t *chunks, const char *eventid)
+mtx_event_t *find_event(mtx_listentry_t *chunks, const char *eventid)
 {
-	for (listentry_t *e = chunks->next; e != chunks; e = e->next) {
-		event_chunk_t *chunk = list_entry_content(e, event_chunk_t, entry);
-		for (listentry_t *f = chunk->events.next; f != &chunk->events; f = f->next) {
-			event_t *ev = list_entry_content(f, event_t, entry);
+	for (mtx_listentry_t *e = chunks->next; e != chunks; e = e->next) {
+		mtx_event_chunk_t *chunk = mtx_list_entry_content(e, mtx_event_chunk_t, entry);
+		for (mtx_listentry_t *f = chunk->events.next; f != &chunk->events; f = f->next) {
+			mtx_event_t *ev = mtx_list_entry_content(f, mtx_event_t, entry);
 			if (ev->id != eventid)
 				continue;
 
@@ -810,7 +810,7 @@ event_t *find_event(listentry_t *chunks, const char *eventid)
 	return NULL;
 }
 
-void free_room_history(room_history_t *history)
+void free_room_history(mtx_room_history_t *history)
 {
 	if (!history)
 		return;
@@ -821,13 +821,13 @@ void free_room_history(room_history_t *history)
 		}
 	}
 
-	list_free(&history->timeline.chunks, event_chunk_t, entry, free_event_chunk);
+	mtx_list_free(&history->timeline.chunks, mtx_event_chunk_t, entry, free_event_chunk);
 	free(history->timeline.prevbatch);
 
-	list_free(&history->ephemeral, event_t, entry, free_event);
-	list_free(&history->account, event_t, entry, free_event);
+	mtx_list_free(&history->ephemeral, mtx_event_t, entry, free_event);
+	mtx_list_free(&history->account, mtx_event_t, entry, free_event);
 }
-void free_room_history_context(_room_t *r)
+void free_room_history_context(mtx_room_t *r)
 {
 	if (!r)
 		return;
@@ -835,25 +835,25 @@ void free_room_history_context(_room_t *r)
 	free(r->id);
 	free_room_history(r->history);
 }
-room_history_t *new_room_history(void)
+mtx_room_history_t *new_room_history(void)
 {
-	room_history_t *history = malloc(sizeof(*history));
+	mtx_room_history_t *history = malloc(sizeof(*history));
 	if (!history)
 		return NULL;
 	memset(history, 0, sizeof(*history));
 
-	list_init(&history->timeline.chunks);
-	list_init(&history->ephemeral);
-	list_init(&history->account);
+	mtx_list_init(&history->timeline.chunks);
+	mtx_list_init(&history->ephemeral);
+	mtx_list_init(&history->account);
 
 	return history;
 }
-room_history_t *dup_history(room_history_t *history)
+mtx_room_history_t *dup_history(mtx_room_history_t *history)
 {
 	if (!history)
 		return NULL;
 
-	room_history_t *h = malloc(sizeof(*h));
+	mtx_room_history_t *h = malloc(sizeof(*h));
 	if (!h)
 		return NULL;
 	memset(h, 0, sizeof(*h));
@@ -867,8 +867,8 @@ room_history_t *dup_history(room_history_t *history)
 	if (strrpl(&h->timeline.prevbatch, history->timeline.prevbatch))
 		goto err_free_history;
 
-	listentry_t *chunks = &h->timeline.chunks;
-	list_dup(chunks, &history->timeline.chunks, event_chunk_t, entry, dup_event_chunk);
+	mtx_listentry_t *chunks = &h->timeline.chunks;
+	mtx_list_dup(chunks, &history->timeline.chunks, mtx_event_chunk_t, entry, dup_event_chunk);
 	if (!chunks)
 		goto err_free_history;
 
@@ -883,10 +883,10 @@ err_free_history:
 	free_room_history(h);
 	return NULL;
 }
-_room_t *find_room(listentry_t *rooms, const char *id)
+mtx_room_t *find_room(mtx_listentry_t *rooms, const char *id)
 {
-	for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
-		_room_t *r = list_entry_content(e, _room_t, entry);
+	for (mtx_listentry_t *e = rooms->next; e != rooms; e = e->next) {
+		mtx_room_t *r = mtx_list_entry_content(e, mtx_room_t, entry);
 
 		if (strcmp(r->id, id) == 0)
 			return r;
@@ -895,7 +895,7 @@ _room_t *find_room(listentry_t *rooms, const char *id)
 }
 
 /* direct state types */
-void free_member(member_t *m)
+void free_member(mtx_member_t *m)
 {
 	if (!m)
 		return;
@@ -905,9 +905,9 @@ void free_member(member_t *m)
 	free(m->avatarurl);
 	free(m);
 }
-member_t *new_member(void)
+mtx_member_t *new_member(void)
 {
-	member_t *m = malloc(sizeof(*m));
+	mtx_member_t *m = malloc(sizeof(*m));
 	if (!m)
 		return NULL;
 	memset(m, 0, sizeof(*m));
@@ -916,11 +916,11 @@ member_t *new_member(void)
 	
 	return m;
 }
-member_t *dup_member(member_t *member)
+mtx_member_t *dup_member(mtx_member_t *member)
 {
 	assert(member);
 
-	member_t *m = malloc(sizeof(*m));
+	mtx_member_t *m = malloc(sizeof(*m));
 	if (!m)
 		return NULL;
 	memset(m, 0, sizeof(*m));
@@ -944,18 +944,16 @@ err_free_member:
 	free_member(m);
 	return NULL;
 }
-member_t *find_member(listentry_t *members, const char *userid)
+mtx_member_t *mtx_find_member(mtx_listentry_t *members, const char *userid)
 {
-	for (listentry_t *e = members->next; e != members; e = e->next) {
-		member_t *m = list_entry_content(e, member_t, entry);
+	mtx_list_foreach(members, mtx_member_t, entry, m) {
 		if (strcmp(m->userid, userid) == 0)
 			return m;
 	}
-
 	return NULL;
 }
 
-void free_msg(msg_t *m)
+void free_msg(mtx_msg_t *m)
 {
 	if (!m)
 		free(m);
@@ -965,12 +963,12 @@ void free_msg(msg_t *m)
 	free_message_content(m->type, m->content);
 	free(m);
 }
-msg_t *dup_msg(msg_t *msg)
+mtx_msg_t *dup_msg(mtx_msg_t *msg)
 {
 	if (!msg)
 		return NULL;
 
-	msg_t *m = malloc(sizeof(*m));
+	mtx_msg_t *m = malloc(sizeof(*m));
 	if (!m)
 		return NULL;
 	memset(m, 0, sizeof(*m));
@@ -989,12 +987,14 @@ msg_t *dup_msg(msg_t *msg)
 		goto err_free_msg;
 	m->content = msg->content;
 
+	return m;
+
 err_free_msg:
 	free_msg(m);
 	return NULL;
 }
 
-void free_room_direct_state_context(_room_t *r)
+void free_room_direct_state_context(mtx_room_t *r)
 {
 	free(r->creator);
 	free(r->version);
@@ -1007,31 +1007,31 @@ void free_room_direct_state_context(_room_t *r)
 	strarr_free(r->altaliases);
 
 	strarr_free(r->heroes);
-	list_free(&r->members, member_t, entry, free_member);
+	mtx_list_free(&r->members, mtx_member_t, entry, free_member);
 
-	list_free(&r->powerlevels.events, event_powerlevel_t, entry, free_event_powerlevel);
-	list_free(&r->powerlevels.users, user_powerlevel_t, entry, free_user_powerlevel);
+	mtx_list_free(&r->powerlevels.events, mtx_event_powerlevel_t, entry, free_event_powerlevel);
+	mtx_list_free(&r->powerlevels.users, mtx_user_powerlevel_t, entry, free_user_powerlevel);
 
 	free(r->avatarurl);
 	free(r->avatarinfo.mimetype);
 	free(r->avatarthumburl);
 	free(r->avatarthumbinfo.mimetype);
 
-	list_free(&r->msgs, msg_t, entry, free_msg);
+	mtx_list_free(&r->msgs, mtx_msg_t, entry, free_msg);
 
 	free(r->crypt.algorithm);
 }
 
 /* general */
-void free_room(_room_t *r)
+void free_room(mtx_room_t *r)
 {
 	free_room_direct_state_context(r);
 	free_room_history_context(r);
 	free(r);
 }
-_room_t *new_room(const char *id, room_context_t context)
+mtx_room_t *new_room(const char *id, mtx_room_context_t context)
 {
-	_room_t *r = malloc(sizeof(*r));
+	mtx_room_t *r = malloc(sizeof(*r));
 	if (!r)
 		return NULL;
 	memset(r, 0, sizeof(*r));
@@ -1041,7 +1041,7 @@ _room_t *new_room(const char *id, room_context_t context)
 	r->notif_count = 0;
 	r->notif_highlight_count = 0;
 
-	list_init(&r->members);
+	mtx_list_init(&r->members);
 
 	r->powerlevels.ban = 50;
 	r->powerlevels.invite = 50;
@@ -1049,10 +1049,10 @@ _room_t *new_room(const char *id, room_context_t context)
 	r->powerlevels.redact = 50;
 	r->powerlevels.statedefault = 50;
 
-	list_init(&r->powerlevels.events);
+	mtx_list_init(&r->powerlevels.events);
 	r->powerlevels.eventdefault = 0;
 
-	list_init(&r->powerlevels.users);
+	mtx_list_init(&r->powerlevels.users);
 	r->powerlevels.usersdefault = 0;
 
 	r->powerlevels.roomnotif = 50;
@@ -1061,7 +1061,7 @@ _room_t *new_room(const char *id, room_context_t context)
 
 	r->histvisib = HISTVISIB_NUM;
 
-	list_init(&r->msgs);
+	mtx_list_init(&r->msgs);
 
 	if (strrpl(&r->id, id)) {
 		free_room(r);
@@ -1070,7 +1070,7 @@ _room_t *new_room(const char *id, room_context_t context)
 
 	r->context = context;
 
-	room_history_t *history = new_room_history();
+	mtx_room_history_t *history = new_room_history();
 	if (!history) {
 		free_room(r);
 		return NULL;
@@ -1080,9 +1080,9 @@ _room_t *new_room(const char *id, room_context_t context)
 	r->dirty = 1;
 	return r;
 }
-_room_t *dup_room(_room_t *room)
+mtx_room_t *dup_room(mtx_room_t *room)
 {
-	_room_t *r = malloc(sizeof(*r));
+	mtx_room_t *r = malloc(sizeof(*r));
 	if (!r)
 		return NULL;
 	memset(r, 0, sizeof(*r));
@@ -1121,8 +1121,8 @@ _room_t *dup_room(_room_t *room)
 	r->notif_count = room->notif_count;
 	r->notif_highlight_count = room->notif_highlight_count;
 
-	listentry_t *members = &r->members;
-	list_dup(members, &room->members, member_t, entry, dup_member);
+	mtx_listentry_t *members = &r->members;
+	mtx_list_dup(members, &room->members, mtx_member_t, entry, dup_member);
 	if (!members)
 		goto err_free_room;
 
@@ -1132,16 +1132,16 @@ _room_t *dup_room(_room_t *room)
 	r->powerlevels.redact = room->powerlevels.redact;
 	r->powerlevels.statedefault = room->powerlevels.statedefault;
 
-	listentry_t *evpowerlevels = &r->powerlevels.events;
-	list_dup(evpowerlevels, &room->powerlevels.events,
-			event_powerlevel_t, entry, dup_event_powerlevel);
+	mtx_listentry_t *evpowerlevels = &r->powerlevels.events;
+	mtx_list_dup(evpowerlevels, &room->powerlevels.events,
+			mtx_event_powerlevel_t, entry, dup_event_powerlevel);
 	if (!evpowerlevels)
 		goto err_free_room;
 	r->powerlevels.eventdefault = room->powerlevels.eventdefault;
 
-	listentry_t *userpowerlevels = &r->powerlevels.users;
-	list_dup(userpowerlevels, &room->powerlevels.users,
-			user_powerlevel_t, entry, dup_user_powerlevel);
+	mtx_listentry_t *userpowerlevels = &r->powerlevels.users;
+	mtx_list_dup(userpowerlevels, &room->powerlevels.users,
+			mtx_user_powerlevel_t, entry, dup_user_powerlevel);
 	if (!userpowerlevels)
 		goto err_free_room;
 	r->powerlevels.usersdefault = room->powerlevels.usersdefault;
@@ -1167,8 +1167,8 @@ _room_t *dup_room(_room_t *room)
 	if (strrpl(&r->avatarthumbinfo.mimetype, room->avatarthumbinfo.mimetype))
 		goto err_free_room;
 
-	listentry_t *msgs = &r->msgs;
-	list_dup(msgs, &room->msgs, msg_t, entry, dup_msg);
+	mtx_listentry_t *msgs = &r->msgs;
+	mtx_list_dup(msgs, &room->msgs, mtx_msg_t, entry, dup_msg);
 	if (!msgs)
 		goto err_free_room;
 
@@ -1179,7 +1179,7 @@ _room_t *dup_room(_room_t *room)
 	r->crypt.rotmsgnum = room->crypt.rotmsgnum;
 
 	assert(room->history);
-	room_history_t *history = dup_history(room->history);
+	mtx_room_history_t *history = dup_history(room->history);
 	if (!history)
 		goto err_free_room;
 	r->history = history;
@@ -1193,7 +1193,7 @@ err_free_room:
 	free_room(r);
 	return NULL;
 }
-void clear_room_direct_state(_room_t *room)
+void clear_room_direct_state(mtx_room_t *room)
 {
 	free(room->creator);
 	room->creator = NULL;
@@ -1229,8 +1229,8 @@ void clear_room_direct_state(_room_t *room)
 	room->notif_count = 0;
 	room->notif_highlight_count = 0;
 
-	list_free(&room->members, member_t, entry, free_member);
-	list_init(&room->members);
+	mtx_list_free(&room->members, mtx_member_t, entry, free_member);
+	mtx_list_init(&room->members);
 
 	room->powerlevels.ban = 50;
 	room->powerlevels.invite = 50;
@@ -1238,12 +1238,12 @@ void clear_room_direct_state(_room_t *room)
 	room->powerlevels.redact = 50;
 	room->powerlevels.statedefault = 50;
 
-	list_free(&room->powerlevels.events, event_powerlevel_t, entry, free_event_powerlevel);
-	list_init(&room->powerlevels.events);
+	mtx_list_free(&room->powerlevels.events, mtx_event_powerlevel_t, entry, free_event_powerlevel);
+	mtx_list_init(&room->powerlevels.events);
 	room->powerlevels.eventdefault = 0;
 
-	list_free(&room->powerlevels.users, user_powerlevel_t, entry, free_user_powerlevel);
-	list_init(&room->powerlevels.users);
+	mtx_list_free(&room->powerlevels.users, mtx_user_powerlevel_t, entry, free_user_powerlevel);
+	mtx_list_init(&room->powerlevels.users);
 	room->powerlevels.usersdefault = 0;
 
 	room->powerlevels.roomnotif = 50;
@@ -1270,8 +1270,8 @@ void clear_room_direct_state(_room_t *room)
 	free(room->avatarthumbinfo.mimetype);
 	room->avatarthumbinfo.mimetype = NULL;
 
-	list_free(&room->msgs, msg_t, entry, free_msg);
-	list_init(&room->msgs);
+	mtx_list_free(&room->msgs, mtx_msg_t, entry, free_msg);
+	mtx_list_init(&room->msgs);
 
 	room->crypt.enabled = 0;
 	free(room->crypt.algorithm);

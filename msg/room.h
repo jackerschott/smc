@@ -1,8 +1,6 @@
 #ifndef ROOM_H
 #define ROOM_H
 
-#include "api/state.h"
-#include "lib/htermbox.h"
 #include "msg/ui.h"
 
 int room_init(void);

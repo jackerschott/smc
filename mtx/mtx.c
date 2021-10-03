@@ -24,12 +24,14 @@
 #include <json-c/json.h>
 
 #include "lib/hjson.h"
+#include "lib/list.h"
 #include "mtx/devices.h"
 #include "mtx/encryption.h"
 #include "mtx/mtx.h"
 #include "mtx/signing.h"
 #include "mtx/state/parse.h"
 #include "mtx/state/apply.h"
+#include "mtx/state/room.h"
 
 static CURL *handle;
 
@@ -38,25 +40,43 @@ static int lastcode;
 static mtx_error_t lasterror;
 static char last_api_error_msg[API_ERRORMSG_BUFSIZE];
 
-struct roomlist_t {
-	listentry_t rooms;
-	listentry_t *r;
-};
 struct mtx_session_t {
 	char *hostname;
 	char *accesstoken;
 	char *userid;
 
 	device_t *device;
-	listentry_t devices;
+	mtx_listentry_t devices;
 	OlmAccount *olmaccount;
 
 	char *nextbatch;
-	roomlist_t joined;
-	roomlist_t invited;
-	roomlist_t left;
+	mtx_listentry_t joinedrooms;
+	mtx_listentry_t invitedrooms;
+	mtx_listentry_t leftrooms;
 };
 
+typedef enum {
+	MTX_ID_USER,
+	MTX_ID_THIRD_PARTY,
+	MTX_ID_PHONE,
+} mtx_id_type_t;
+union mtx_id_t {
+	mtx_id_type_t type;
+	struct {
+		mtx_id_type_t type;
+		char *name;
+	} user;
+	struct {
+		mtx_id_type_t type;
+		char *medium;
+		char *address;
+	} thirdparty;
+	struct {
+		mtx_id_type_t type;
+		char *country;
+		char *number;
+	} phone;
+};
 
 #define RESP_READSIZE 4096U
 typedef struct {
@@ -199,6 +219,9 @@ static int generate_transaction_id(char *id)
 
 static void free_olm_account(OlmAccount *acc)
 {
+	if (!acc)
+		return;
+
 	olm_clear_account(acc);
 	free(acc);
 }
@@ -275,6 +298,9 @@ char *mtx_last_error_msg(void)
 
 void mtx_free_session(mtx_session_t *session)
 {
+	if (!session)
+		return;
+
 	//free(session->nextbatch);
 
 	free(session->hostname);
@@ -297,10 +323,10 @@ mtx_session_t *mtx_new_session()
 		goto err_local;
 	memset(session, 0, sizeof(*session));
 
-	list_init(&session->devices);
-	list_init(&session->joined.rooms);
-	list_init(&session->invited.rooms);
-	list_init(&session->left.rooms);
+	mtx_list_init(&session->devices);
+	mtx_list_init(&session->joinedrooms);
+	mtx_list_init(&session->invitedrooms);
+	mtx_list_init(&session->leftrooms);
 
 	return session;
 
@@ -309,7 +335,88 @@ err_local:
 	return NULL;
 }
 
-static int login_data_add_id_user(json_object *data, mtx_id_t id)
+void mtx_free_id(mtx_id_t *id)
+{
+	if (id->type == MTX_ID_USER) {
+		free(id->user.name);
+	} else if (id->type == MTX_ID_THIRD_PARTY) {
+		free(id->thirdparty.medium);
+		free(id->thirdparty.address);
+	} else if (id->type == MTX_ID_PHONE) {
+		free(id->phone.country);
+		free(id->phone.number);
+	}
+	free(id);
+}
+mtx_id_t *mtx_create_id_user(const char *username)
+{
+	mtx_id_t *id = malloc(sizeof(*id));
+	if (!id)
+		return NULL;
+
+	id->type = MTX_ID_USER;
+
+	char *name = strdup(username);
+	if (!name) {
+		free(id);
+		return NULL;
+	}
+	id->user.name = name;
+
+	return id;
+}
+mtx_id_t *mtx_create_id_third_party(const char *medium, const char *address)
+{
+	mtx_id_t *id = malloc(sizeof(*id));
+	if (!id)
+		return NULL;
+
+	id->type = MTX_ID_THIRD_PARTY;
+
+	char *med = strdup(medium);
+	if (!med) {
+		free(id);
+		return NULL;
+	}
+	id->thirdparty.medium = med;
+
+	char *addr = strdup(address);
+	if (!addr) {
+		free(med);
+		free(id);
+		return NULL;
+	}
+	id->thirdparty.address = addr;
+
+	return id;
+}
+mtx_id_t *mtx_create_id_phone(const char *country, const char *number)
+{
+	mtx_id_t *id = malloc(sizeof(*id));
+	if (!id)
+		return NULL;
+	
+	id->type = MTX_ID_PHONE;
+
+	char *ctry = strdup(country);
+	if (!ctry) {
+		free(id);
+		return NULL;
+	}
+	id->phone.country = ctry;
+
+	char *num = strdup(number);
+	if (!num) {
+		free(ctry);
+		free(id);
+		return NULL;
+	}
+	id->phone.number = num;
+
+	return id;
+}
+
+static int login_data_add_id_user(json_object *data, mtx_id_t *id)
 {
 	json_object *ident;
 	if (json_add_object_(data, "identifier", &ident))
@@ -318,12 +425,12 @@ static int login_data_add_id_user(json_object *data, mtx_id_t id)
 	if (json_add_string_(ident, "type", "m.id.user"))
 		return 1;
 
-	if (json_add_string_(ident, "user", id.user.name))
+	if (json_add_string_(ident, "user", id->user.name))
 		return 1;
 
 	return 0;
 }
-static int login_data_add_id_third_party(json_object *data, mtx_id_t id)
+static int login_data_add_id_third_party(json_object *data, mtx_id_t *id)
 {
 	json_object *ident;
 	if (json_add_object_(data, "identifier", &ident))
@@ -332,15 +439,15 @@ static int login_data_add_id_third_party(json_object *data, mtx_id_t id)
 	if (json_add_string_(ident, "type", "m.id.thirdparty"))
 		return 1;
 
-	if (json_add_string_(ident, "medium", id.thirdparty.medium))
+	if (json_add_string_(ident, "medium", id->thirdparty.medium))
 		return 1;
 
-	if (json_add_string_(ident, "address", id.thirdparty.address))
+	if (json_add_string_(ident, "address", id->thirdparty.address))
 		return 1;
 
 	return 0;
 }
-static int login_data_add_id_phone(json_object *data, mtx_id_t id)
+static int login_data_add_id_phone(json_object *data, mtx_id_t *id)
 {
 	json_object *ident;
 	if (json_add_object_(data, "identifier", &ident))
@@ -349,10 +456,10 @@ static int login_data_add_id_phone(json_object *data, mtx_id_t id)
 	if (json_add_string_(ident, "type", "m.id.phone"))
 		return 1;
 
-	if (json_add_string_(ident, "country", id.phone.country))
+	if (json_add_string_(ident, "country", id->phone.country))
 		return 1;
 
-	if (json_add_string_(ident, "phone", id.phone.number))
+	if (json_add_string_(ident, "phone", id->phone.number))
 		return 1;
 
 	return 0;
@@ -364,7 +471,7 @@ static char *get_homeserver(const char *userid)
 
 	return strdup(c + 1);
 }
-static int login(mtx_session_t *session, const char *hostname, const char *typestr, mtx_id_t id,
+static int login(mtx_session_t *session, const char *hostname, const char *typestr, mtx_id_t *id,
 		const char *secret, const char *_devid, const char *devname)
 {
 	json_object *data = json_object_new_object();
@@ -397,7 +504,7 @@ static int login(mtx_session_t *session, const char *hostname, const char *types
 	}
 
 	int err;
-	switch (id.type) {
+	switch (id->type) {
 	case MTX_ID_USER:
 		err = login_data_add_id_user(data, id);
 		break;
@@ -453,19 +560,23 @@ err_local:
 	lasterror = MTX_ERR_LOCAL;
 	return 1;
 }
-int mtx_login_password(mtx_session_t *session, const char *hostname, mtx_id_t id, const char *pass,
+int mtx_login_password(mtx_session_t *session, const char *hostname, mtx_id_t *id, const char *pass,
 		const char *devid, const char *devname)
 {
 	return login(session, hostname, "m.login.password", id, pass, devid, devname);
 }
-int mtx_login_token(mtx_session_t *session, const char *hostname, mtx_id_t id, const char *token,
+int mtx_login_token(mtx_session_t *session, const char *hostname, mtx_id_t *id, const char *token,
 		const char *devid, const char *devname)
 {
 	return login(session, hostname, "m.login.token", id, token, devid, devname);
 }
-static int is_logged_in(mtx_session_t *session)
+const char *mtx_accesstoken(mtx_session_t *session)
 {
-	return session->accesstoken != NULL;
+	return session->accesstoken;
+}
+const char *mtx_device_id(mtx_session_t *session)
+{
+	return session->device->id;
 }
 
 static int query_user_id(const char *hostname, const char *accesstoken, char **userid)
@@ -480,6 +591,7 @@ static int query_user_id(const char *hostname, const char *accesstoken, char **u
 			urlparams, NULL, &code, &resp))
 		return 1;
 
+	*userid = NULL;
 	if (json_get_object_as_string_(resp, "user_id", userid)) {
 		json_object_put(resp);
 		goto err_local;
@@ -492,7 +604,7 @@ err_local:
 	lasterror = MTX_ERR_LOCAL;
 	return 1;
 }
-int mtx_past_session(mtx_session_t *session, const char *hostname,
+int mtx_recall_past_session(mtx_session_t *session, const char *hostname,
 		const char *accesstoken, const char *devid)
 {
 	char *userid;
@@ -618,8 +730,8 @@ static int query_keys(mtx_session_t *session, const char *sincetoken, int timeou
 	}
 
 	int updates = 0;
-	for (listentry_t *e = session->devices.next; e != &session->devices; e = e->next) {
-		device_list_t *devlist = list_entry_content(e, device_list_t, entry);
+	for (mtx_listentry_t *e = session->devices.next; e != &session->devices; e = e->next) {
+		device_list_t *devlist = mtx_list_entry_content(e, device_list_t, entry);
 
 		if (!devlist->dirty)
 			continue;
@@ -630,9 +742,9 @@ static int query_keys(mtx_session_t *session, const char *sincetoken, int timeou
 			goto err_local;
 		}
 
-		listentry_t *devs = &devlist->devices;
-		for (listentry_t *f = devs->next; f != devs; f = f->next) {
-			device_t *dev = list_entry_content(devs, device_t, entry);
+		mtx_listentry_t *devs = &devlist->devices;
+		for (mtx_listentry_t *f = devs->next; f != devs; f = f->next) {
+			device_t *dev = mtx_list_entry_content(devs, device_t, entry);
 
 			if (json_array_add_string_(_devlist, dev->id)) {
 				json_object_put(data);
@@ -680,8 +792,8 @@ static int query_keys(mtx_session_t *session, const char *sincetoken, int timeou
 
 	json_object_put(resp);
 
-	for (listentry_t *e = session->devices.next; e != &session->devices; e = e->next) {
-		device_list_t *devlist = list_entry_content(e, device_list_t, entry);
+	for (mtx_listentry_t *e = session->devices.next; e != &session->devices; e = e->next) {
+		device_list_t *devlist = mtx_list_entry_content(e, device_list_t, entry);
 		devlist->dirty = 0;
 	}
 
@@ -724,7 +836,7 @@ err_local:
 	lasterror = MTX_ERR_LOCAL;
 	return 0;
 }
-int mtx_exchange_keys(mtx_session_t *session, const listentry_t *devtrackinfos,
+int mtx_exchange_keys(mtx_session_t *session, const mtx_listentry_t *devtrackinfos,
 		const char *sincetoken, int timeout)
 {
 	assert(session->accesstoken);
@@ -778,8 +890,8 @@ int mtx_sync(mtx_session_t *session, int timeout)
 
 	json_object *rooms;
 	if (json_object_object_get_ex(resp, "rooms", &rooms)) {
-		if (update_room_histories(rooms, &session->joined.rooms,
-					&session->invited.rooms, &session->left.rooms)) {
+		if (update_room_histories(rooms, &session->joinedrooms,
+					&session->invitedrooms, &session->leftrooms)) {
 			goto err_local;
 		}
 	}
@@ -800,7 +912,7 @@ const char *mtx_get_since_token(mtx_session_t *session)
 {
 	return session->nextbatch;
 }
-int mtx_get_device_tracking_infos(mtx_session_t *session, listentry_t *devtrackinfos)
+int mtx_get_device_tracking_infos(mtx_session_t *session, mtx_listentry_t *devtrackinfos)
 {
 	if (get_device_tracking_infos(&session->devices, devtrackinfos)) {
 		lasterror = MTX_ERR_LOCAL;
@@ -810,58 +922,62 @@ int mtx_get_device_tracking_infos(mtx_session_t *session, listentry_t *devtracki
 	return 0;
 }
 
-static void compute_room_state(listentry_t *rooms)
+static mtx_listentry_t *get_rooms(mtx_session_t *session, mtx_room_context_t context)
 {
-	for (listentry_t *e = rooms->next; e != rooms; e = e->next) {
-		room_t *r = list_entry_content(e, room_t, entry);
+	switch (context) {
+	case MTX_ROOM_CONTEXT_JOIN:
+		return &session->joinedrooms;
+	case MTX_ROOM_CONTEXT_INVITE:
+		return &session->invitedrooms;
+	case MTX_ROOM_CONTEXT_LEAVE:
+		return &session->leftrooms;
+	default:
+		assert(0);
+	}
+}
+static void compute_room_state(mtx_listentry_t *rooms)
+{
+	for (mtx_listentry_t *e = rooms->next; e != rooms; e = e->next) {
+		mtx_room_t *r = mtx_list_entry_content(e, mtx_room_t, entry);
 		compute_room_state_from_history(r);
 	}
 }
-room_t *mtx_get_next_room(roomlist_t *rooms)
+void mtx_roomlist_init(mtx_listentry_t *rooms)
 {
-	if (rooms->r == &rooms->rooms)
-		return NULL;
+	mtx_list_init(rooms);
+}
+void mtx_roomlist_free(mtx_listentry_t *rooms)
+{
+	if (!rooms)
+		return;
 
-	room_t *r = list_entry_content(rooms->r, room_t, entry);
+	mtx_list_free(rooms, mtx_room_t, entry, free_room);
+}
+int mtx_roomlist_update(mtx_session_t *session, mtx_listentry_t *_rooms, mtx_room_context_t context)
+{
+	mtx_listentry_t *rooms = get_rooms(session, context);
 
-	rooms->r = rooms->r->next;
-	return r;
-}
-roomlist_t *mtx_get_joined_rooms(mtx_session_t *session)
-{
-	compute_room_state(&session->joined.rooms);
+	compute_room_state(rooms);
 
-	session->joined.r = session->joined.rooms.next;
-	return &session->joined;
-}
-roomlist_t *mtx_get_invited_rooms(mtx_session_t *session)
-{
-	compute_room_state(&session->invited.rooms);
-	
-	session->invited.r = session->invited.rooms.next;
-	return &session->invited;
-}
-roomlist_t *mtx_get_left_rooms(mtx_session_t *session)
-{
-	compute_room_state(&session->left.rooms);
+	mtx_list_free(_rooms, mtx_room_t, entry, free_room);
 
-	session->left.r = session->left.rooms.next;
-	return &session->left;
+	mtx_listentry_t *newrooms = _rooms;
+	mtx_list_dup(newrooms, rooms, mtx_room_t, entry, dup_room);
+	if (!newrooms)
+		return 1;
+
+	return 0;
 }
-const char *mtx_room_get_id(room_t *r)
+int mtx_has_dirty_rooms(mtx_session_t *session, mtx_room_context_t context)
 {
-	assert(!r->dirty);
-	return r->id;
-}
-const char *mtx_room_get_name(room_t *r)
-{
-	assert(!r->dirty);
-	return r->name;
-}
-const char *mtx_room_get_topic(room_t *r)
-{
-	assert(!r->dirty);
-	return r->topic;
+	mtx_listentry_t *rooms = get_rooms(session, context);
+
+	for (mtx_listentry_t *e = rooms->next; e != rooms; e = e->next) {
+		mtx_room_t *r = mtx_list_entry_content(e, mtx_room_t, entry);
+		if (r->dirty)
+			return 1;
+	}
+	return 0;
 }
 
 int mtx_sync_keys(mtx_session_t *session, int timeout)

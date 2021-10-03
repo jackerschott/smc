@@ -12,18 +12,18 @@
 #include <ncurses.h>
 #include <sqlite3.h>
 
-#include "mtx/mtx.h"
-#include "mtx/state.h"
 #include "lib/list.h"
 #include "msg/menu.h"
 #include "msg/smc.h"
 #include "msg/sync.h"
 #include "msg/room.h"
 #include "msg/ui.h"
+#include "mtx/mtx.h"
 
 #define SYNC_HANDLER_STACKSIZE (4096 * 64)
 
 mtx_session_t *smc_session;
+mtx_room_t *smc_cur_room;
 
 pthread_t sync_handler;
 int smc_terminate = 0;
@@ -72,7 +72,7 @@ static int hread(int fd, char **buf, size_t *size)
 	}
 	assert(0);
 }
-static int save_config(const char *filepath, char *val)
+static int save_config(const char *filepath, const char *val)
 {
 	int ftoken = open(filepath, O_CREAT | O_WRONLY | O_TRUNC, 0600);
 	if (ftoken == -1)
@@ -91,20 +91,22 @@ static int get_config(const char *filepath, char **val)
 {
 	int ftoken = open(filepath, O_RDONLY);
 	if (ftoken == -1) {
-		if (errno == ENOENT)
-			return 1;
-		return -1;
+		if (errno == ENOENT) {
+			*val = NULL;
+			return 0;
+		}
+		return 1;
 	}
 
 	size_t size = HREAD_BUFSIZE;
 	char *buf = malloc(size);
 	if (!buf) {
 		close(ftoken);
-		return -1;
+		return 1;
 	}
 
 	if (hread(ftoken, &buf, &size) == -1)
-		return -1;
+		return 1;
 	*val = buf;
 
 	close(ftoken);
@@ -227,46 +229,67 @@ static int handle_event(uimode_t *mode, int ch)
 
 static int initialize_matrix_account(void)
 {
+	if (mtx_init())
+		return 1;
+
 	char *token = NULL;
 	if (get_config(ACCESSTOKEN_FILE_PATH, &token)) {
-		fprintf(stderr, "%s: Error while opening %s\n", __func__, ACCESSTOKEN_FILE_PATH);
+		mtx_cleanup();
 		return 1;
 	}
 
 	char *devid = NULL;
 	if (get_config(DEVID_FILE_PATH, &devid)) {
-		fprintf(stderr, "%s: Error while opening %s\n", __func__, DEVID_FILE_PATH);
+		mtx_cleanup();
 		return 1;
 	}
 
-	smc_session = mtx_create_session("localhost:8080",
-			options.username, options.pass, token, devid);
+	smc_session = mtx_new_session();
 	if (!smc_session) {
-		fprintf(stderr, "%s: Could not create matrix session\n", __func__);
+		mtx_cleanup();
 		return 1;
 	}
+	assert(!token && !devid || token && devid);
 
-	list_init(&smc_rooms[ROOMTYPE_JOINED]);
-	list_init(&smc_rooms[ROOMTYPE_INVITED]);
-	list_init(&smc_rooms[ROOMTYPE_LEFT]);
+	if (!token) {
+		mtx_id_t *id = mtx_create_id_user(options.username);
+		if (!id)
+			goto err_matrix_cleanup;
+
+		if (mtx_login_password(smc_session, "localhost:8080",
+					id, options.pass, devid, NULL)) {
+			mtx_free_id(id);
+			goto err_matrix_cleanup;
+		}
+		mtx_free_id(id);
+
+		if (save_config(ACCESSTOKEN_FILE_PATH, mtx_accesstoken(smc_session)))
+			goto err_matrix_cleanup;
+		
+		if (save_config(DEVID_FILE_PATH, mtx_device_id(smc_session)))
+			goto err_matrix_cleanup;
+	} else {
+		if (mtx_recall_past_session(smc_session, "localhost:8080", token, devid))
+			goto err_matrix_cleanup;
+	}
+
 	if (update()) {
 		fprintf(stderr, "%s: Failed to perform initial sync\n", __func__);
-		list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-		list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-		list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
-		mtx_cleanup_session(smc_session);
+		mtx_free_session(smc_session);
 		return 1;
 	}
 
 	return 0;
+
+err_matrix_cleanup:
+	mtx_free_session(smc_session);
+	mtx_cleanup();
+	return 1;
 }
 static void cleanup_matrix_account(void)
 {
-	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
-
-	mtx_cleanup_session(smc_session);
+	mtx_free_session(smc_session);
+	mtx_cleanup();
 }
 
 static void setup(void)
@@ -275,6 +298,7 @@ static void setup(void)
 		exit(1);
 
 	if (initialize_matrix_account()) {
+		fprintf(stderr, "%s: failed to init matrix account\n", __func__);
 		close(flog);
 		exit(1);
 	}
@@ -364,11 +388,7 @@ static void cleanup(void)
 	room_menu_cleanup();
 	endwin();
 
-	list_free(&smc_rooms[ROOMTYPE_LEFT], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_INVITED], room_t, entry, free_room);
-	list_free(&smc_rooms[ROOMTYPE_JOINED], room_t, entry, free_room);
-
-	api_cleanup();
+	cleanup_matrix_account();
 
 	dprintf(flog, "%s\n", "cleanup");
 	close(flog);

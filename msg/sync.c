@@ -1,41 +1,27 @@
 #include "mtx/mtx.h"
+#include "msg/smc.h"
 #include "msg/sync.h"
 
-listentry_t smc_rooms[ROOMTYPE_NUM];
-room_t *smc_cur_room;
+#define SYNC_TIMEOUT 1000
+
 int smc_sync_avail = 0;
-
 pthread_mutex_t smc_synclock;
-
-listentry_t sync_batches;
 
 int update(void)
 {
-	json_object *resp;
-	if (mtx_sync(smc_session, &resp))
+	if (mtx_sync(smc_session, SYNC_TIMEOUT))
 		return 1;
 
-	pthread_mutex_lock(&smc_synclock);
-	listentry_t *joined = &smc_rooms[ROOMTYPE_JOINED];
-	listentry_t *invited = &smc_rooms[ROOMTYPE_INVITED];
-	listentry_t *left = &smc_rooms[ROOMTYPE_LEFT];
-	if (state_apply_sync_updates(resp, &sync_batches, joined, invited, left)) {
-		json_object_put(resp);
-		return 1;
-	}
-	pthread_mutex_unlock(&smc_synclock);
-
-	json_object_put(resp);
 	return 0;
 }
 
 static void setup(void)
 {
-	state_init_batch_list();
+	// nothing to do (yet)
 }
 static void cleanup(void)
 {
-	state_free_batch_list();
+	// nothing to do (yet)
 }
 void *sync_main(void *args)
 {
@@ -43,7 +29,10 @@ void *sync_main(void *args)
 
 	struct timespec ts = {.tv_sec = 0, .tv_nsec = 100 * 1000 * 1000};
 	while (1) {
-		if (update())
+		pthread_mutex_lock(&smc_synclock);
+		int err = update();
+		pthread_mutex_unlock(&smc_synclock);
+		if (err)
 			goto err_cleanup;
 
 		pthread_mutex_lock(&smc_synclock);
@@ -55,16 +44,6 @@ void *sync_main(void *args)
 		pthread_mutex_unlock(&smc_synclock);
 		if (terminate)
 			break;
-
-		while (1) {
-			if (nanosleep(&ts, NULL))
-				goto err_cleanup;
-			pthread_mutex_lock(&smc_synclock);
-			int sync = smc_sync_avail;
-			pthread_mutex_unlock(&smc_synclock);
-			if (!sync)
-				break;
-		}
 	}
 
 err_cleanup:

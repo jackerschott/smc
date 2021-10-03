@@ -8,12 +8,12 @@
 #include "lib/hjson.h"
 #include "mtx/state/parse.h"
 
-static int get_event(const json_object *obj, event_t **event);
-static int get_event_list(const json_object *obj, listentry_t *events);
+static int get_event(const json_object *obj, mtx_event_t **event);
+static int get_event_list(const json_object *obj, mtx_listentry_t *events);
 
-static int get_ev_canonalias(const json_object *obj, ev_canonalias_t **_canonalias)
+static int get_ev_canonalias(const json_object *obj, mtx_ev_canonalias_t **_canonalias)
 {
-	ev_canonalias_t *canonalias = malloc(sizeof(*canonalias));
+	mtx_ev_canonalias_t *canonalias = malloc(sizeof(*canonalias));
 	if (!canonalias)
 		return 1;
 	memset(canonalias, 0, sizeof(*canonalias));
@@ -32,9 +32,9 @@ err_free_canonalias:
 	return 1;
 }
 
-static int get_ev_create(const json_object *obj, ev_create_t **_create)
+static int get_ev_create(const json_object *obj, mtx_ev_create_t **_create)
 {
-	ev_create_t *create = malloc(sizeof(*create));
+	mtx_ev_create_t *create = malloc(sizeof(*create));
 	if (!create)
 		return 1;
 	memset(create, 0, sizeof(*create));
@@ -76,9 +76,9 @@ err_free_create:
 	return 1;
 }
 
-static int get_ev_joinrules(const json_object *obj, ev_joinrules_t **_joinrules)
+static int get_ev_joinrules(const json_object *obj, mtx_ev_joinrules_t **_joinrules)
 {
-	ev_joinrules_t *joinrules = malloc(sizeof(*joinrules));
+	mtx_ev_joinrules_t *joinrules = malloc(sizeof(*joinrules));
 	if (!joinrules)
 		return 1;
 
@@ -92,14 +92,14 @@ static int get_ev_joinrules(const json_object *obj, ev_joinrules_t **_joinrules)
 	return 0;
 }
 
-static int get_ev_member(const json_object *obj, ev_member_t **_member)
+static int get_ev_member(const json_object *obj, mtx_ev_member_t **_member)
 {
-	ev_member_t *member = malloc(sizeof(*member));
+	mtx_ev_member_t *member = malloc(sizeof(*member));
 	if (!member)
 		return 1;
 	memset(member, 0, sizeof(*member));
 	member->isdirect = -1;
-	list_init(&member->invite_room_events);
+	mtx_list_init(&member->invite_room_events);
 
 	if (json_get_object_as_string_(obj, "avatar_url", &member->avatarurl) == -1)
 		goto err_free_member;
@@ -108,7 +108,7 @@ static int get_ev_member(const json_object *obj, ev_member_t **_member)
 		goto err_free_member;
 
 	if (json_get_object_as_enum_(obj, "membership", (int *)&member->membership,
-				MEMBERSHIP_NUM, membership_strs))
+				MEMBERSHIP_NUM, mtx_membership_strs))
 		goto err_free_member;
 
 	json_get_object_as_bool_(obj, "is_direct", &member->isdirect);
@@ -122,7 +122,7 @@ static int get_ev_member(const json_object *obj, ev_member_t **_member)
 		if (!json_object_object_get_ex(tpinvite, "signed", &_signed))
 			goto err_free_member;
 
-		thirdparty_invite_t tpinvite;
+		mtx_thirdparty_invite_t tpinvite;
 		if (json_get_object_as_string_(_signed, "mxid", &tpinvite.mxid))
 			goto err_free_member;
 
@@ -150,9 +150,9 @@ err_free_member:
 	return 1;
 }
 
-static int get_ev_powerlevels(const json_object *obj, ev_powerlevels_t **_powerlevels)
+static int get_ev_powerlevels(const json_object *obj, mtx_ev_powerlevels_t **_powerlevels)
 {
-	ev_powerlevels_t *powerlevels = malloc(sizeof(*powerlevels));
+	mtx_ev_powerlevels_t *powerlevels = malloc(sizeof(*powerlevels));
 	if (!powerlevels)
 		return 1;
 	memset(powerlevels, 0, sizeof(*powerlevels));
@@ -162,10 +162,10 @@ static int get_ev_powerlevels(const json_object *obj, ev_powerlevels_t **_powerl
 	powerlevels->redact = -1;
 	powerlevels->statedefault = -1;
 
-	list_init(&powerlevels->events);
+	mtx_list_init(&powerlevels->events);
 	powerlevels->eventdefault = -1;
 
-	list_init(&powerlevels->users);
+	mtx_list_init(&powerlevels->users);
 	powerlevels->usersdefault = -1;
 
 	powerlevels->roomnotif = -1;
@@ -179,14 +179,14 @@ static int get_ev_powerlevels(const json_object *obj, ev_powerlevels_t **_powerl
 	json_object *events;
 	if (json_object_object_get_ex(obj, "events", &events)) {
 		json_object_object_foreach(events, k, v) {
-			event_powerlevel_t *plevel = malloc(sizeof(*plevel));
+			mtx_event_powerlevel_t *plevel = malloc(sizeof(*plevel));
 			if (!plevel)
 				goto err_free_powerlevels;
 			
 			plevel->type = str2enum(k, eventtype_strs, EVENT_NUM);
 			plevel->level = json_object_get_int(v);
 
-			list_add(&powerlevels->events, &plevel->entry);
+			mtx_list_add(&powerlevels->events, &plevel->entry);
 		}
 	}
 	json_get_object_as_int_(obj, "events_default", &powerlevels->eventdefault);
@@ -194,7 +194,7 @@ static int get_ev_powerlevels(const json_object *obj, ev_powerlevels_t **_powerl
 	json_object *users;
 	if (json_object_object_get_ex(obj, "users", &users)) {
 		json_object_object_foreach(users, k, v) {
-			user_powerlevel_t *plevel = malloc(sizeof(*plevel));
+			mtx_user_powerlevel_t *plevel = malloc(sizeof(*plevel));
 			if (!plevel)
 				goto err_free_powerlevels;
 
@@ -206,7 +206,7 @@ static int get_ev_powerlevels(const json_object *obj, ev_powerlevels_t **_powerl
 			plevel->id = id;
 			plevel->level = json_object_get_int(v);
 
-			list_add(&powerlevels->events, &plevel->entry);
+			mtx_list_add(&powerlevels->events, &plevel->entry);
 		}
 	}
 	json_get_object_as_int_(obj, "users_default", &powerlevels->usersdefault);
@@ -224,9 +224,9 @@ err_free_powerlevels:
 	return 1;
 }
 
-static int get_ev_redaction(const json_object *obj, ev_redaction_t **_redaction)
+static int get_ev_redaction(const json_object *obj, mtx_ev_redaction_t **_redaction)
 {
-	ev_redaction_t *redaction = malloc(sizeof(*redaction));
+	mtx_ev_redaction_t *redaction = malloc(sizeof(*redaction));
 	if (!redaction)
 		return 1;
 	memset(redaction, 0, sizeof(*redaction));
@@ -240,9 +240,9 @@ static int get_ev_redaction(const json_object *obj, ev_redaction_t **_redaction)
 	return 0;
 }
 
-static int get_ev_name(const json_object *obj, ev_name_t **_name)
+static int get_ev_name(const json_object *obj, mtx_ev_name_t **_name)
 {
-	ev_name_t *name = malloc(sizeof(*name));
+	mtx_ev_name_t *name = malloc(sizeof(*name));
 	if (!name)
 		return 1;
 	memset(name, 0, sizeof(*name));
@@ -256,9 +256,9 @@ static int get_ev_name(const json_object *obj, ev_name_t **_name)
 	return 0;
 }
 
-static int get_ev_topic(const json_object *obj, ev_topic_t **_topic)
+static int get_ev_topic(const json_object *obj, mtx_ev_topic_t **_topic)
 {
-	ev_topic_t *topic = malloc(sizeof(*topic));
+	mtx_ev_topic_t *topic = malloc(sizeof(*topic));
 	if (!topic)
 		return 1;
 	memset(topic, 0, sizeof(*topic));
@@ -272,7 +272,7 @@ static int get_ev_topic(const json_object *obj, ev_topic_t **_topic)
 	return 0;
 }
 
-static int get_avatar_image_info(const json_object *obj, avatar_image_info_t *info)
+static int get_avatar_image_info(const json_object *obj, mtx_avatar_image_info_t *info)
 {
 	json_get_object_as_uint64_(obj, "h", &info->h);
 	json_get_object_as_uint64_(obj, "w", &info->w);
@@ -284,9 +284,9 @@ static int get_avatar_image_info(const json_object *obj, avatar_image_info_t *in
 
 	return 0;
 }
-static int get_ev_avatar(const json_object *obj, ev_avatar_t **_avatar)
+static int get_ev_avatar(const json_object *obj, mtx_ev_avatar_t **_avatar)
 {
-	ev_avatar_t *avatar = malloc(sizeof(*avatar));
+	mtx_ev_avatar_t *avatar = malloc(sizeof(*avatar));
 	if (!avatar)
 		return 1;
 	memset(avatar, 0, sizeof(*avatar));
@@ -319,9 +319,9 @@ err_free_avatar:
 	return 1;
 }
 
-static int get_ev_encryption(const json_object *obj, ev_encryption_t **_encryption)
+static int get_ev_encryption(const json_object *obj, mtx_ev_encryption_t **_encryption)
 {
-	ev_encryption_t *encryption = malloc(sizeof(*encryption));
+	mtx_ev_encryption_t *encryption = malloc(sizeof(*encryption));
 	if (!encryption)
 		return 1;
 	memset(encryption, 0, sizeof(*encryption));
@@ -342,9 +342,9 @@ err_free_encryption:
 	return 1;
 }
 
-static int get_ev_history_visibility(const json_object *obj, ev_history_visibility_t **_visib)
+static int get_ev_history_visibility(const json_object *obj, mtx_ev_history_visibility_t **_visib)
 {
-	ev_history_visibility_t *visib = malloc(sizeof(*visib));
+	mtx_ev_history_visibility_t *visib = malloc(sizeof(*visib));
 	if (!visib)
 		return 1;
 	memset(visib, 0, sizeof(*visib));
@@ -361,9 +361,9 @@ err_free_visib:
 	return 1;
 }
 
-static int get_message_text(const json_object *obj, message_text_t **_msg)
+static int get_message_text(const json_object *obj, mtx_message_text_t **_msg)
 {
-	message_text_t *msg = malloc(sizeof(*msg));
+	mtx_message_text_t *msg = malloc(sizeof(*msg));
 	if (!msg)
 		return 1;
 	memset(msg, 0, sizeof(*msg));
@@ -381,9 +381,9 @@ err_free_msg:
 	free_message_text(msg);
 	return 1;
 }
-static int get_message_emote(const json_object *obj, message_emote_t **_msg)
+static int get_message_emote(const json_object *obj, mtx_message_emote_t **_msg)
 {
-	message_emote_t *msg = malloc(sizeof(*msg));
+	mtx_message_emote_t *msg = malloc(sizeof(*msg));
 	if (!msg)
 		return 1;
 	memset(msg, 0, sizeof(*msg));
@@ -401,15 +401,15 @@ err_free_msg:
 	free_message_emote(msg);
 	return 1;
 }
-static int get_message_content(const json_object *obj, msg_type_t type, void **content)
+static int get_message_content(const json_object *obj, mtx_msg_type_t type, void **content)
 {
 	int err;
 	switch (type) {
 	case MSG_TEXT:
-		err = get_message_text(obj, (message_text_t **)content);
+		err = get_message_text(obj, (mtx_message_text_t **)content);
 		break;
 	case MSG_EMOTE:
-		err = get_message_emote(obj, (message_emote_t **)content);
+		err = get_message_emote(obj, (mtx_message_emote_t **)content);
 		break;
 	default:
 		assert(0);
@@ -419,9 +419,9 @@ static int get_message_content(const json_object *obj, msg_type_t type, void **c
 
 	return 0;
 }
-static int get_ev_message(const json_object *obj, ev_message_t **_msg)
+static int get_ev_message(const json_object *obj, mtx_ev_message_t **_msg)
 {
-	ev_message_t *msg = malloc(sizeof(*msg));
+	mtx_ev_message_t *msg = malloc(sizeof(*msg));
 	if (!msg)
 		return 1;
 	memset(msg, 0, sizeof(*msg));
@@ -434,6 +434,7 @@ static int get_ev_message(const json_object *obj, ev_message_t **_msg)
 	if (get_message_content(obj, msg->type, &msg->content))
 		goto err_free_msg;
 
+	*_msg = msg;
 	return 0;
 
 err_free_msg:
@@ -441,45 +442,45 @@ err_free_msg:
 	return 1;
 }
 
-static int get_event_content(const json_object *obj, eventtype_t type, void **content)
+static int get_event_content(const json_object *obj, mtx_eventtype_t type, void **content)
 {
 	int err;
 	switch (type) {
 	case EVENT_CANONALIAS:
-		err = get_ev_canonalias(obj, (ev_canonalias_t **)content);
+		err = get_ev_canonalias(obj, (mtx_ev_canonalias_t **)content);
 		break;
 	case EVENT_CREATE:
-		err = get_ev_create(obj, (ev_create_t **)content);
+		err = get_ev_create(obj, (mtx_ev_create_t **)content);
 		break;
 	case EVENT_JOINRULES:
-		err = get_ev_joinrules(obj, (ev_joinrules_t **)content);
+		err = get_ev_joinrules(obj, (mtx_ev_joinrules_t **)content);
 		break;
 	case EVENT_MEMBER:
-		err = get_ev_member(obj, (ev_member_t **)content);
+		err = get_ev_member(obj, (mtx_ev_member_t **)content);
 		break;
 	case EVENT_POWERLEVELS:
-		err = get_ev_powerlevels(obj, (ev_powerlevels_t **)content);
+		err = get_ev_powerlevels(obj, (mtx_ev_powerlevels_t **)content);
 		break;
 	case EVENT_NAME:
-		err = get_ev_name(obj, (ev_name_t **)content);
+		err = get_ev_name(obj, (mtx_ev_name_t **)content);
 		break;
 	case EVENT_TOPIC:
-		err = get_ev_topic(obj, (ev_topic_t **)content);
+		err = get_ev_topic(obj, (mtx_ev_topic_t **)content);
 		break;
 	case EVENT_AVATAR:
-		err = get_ev_avatar(obj, (ev_avatar_t **)content);
+		err = get_ev_avatar(obj, (mtx_ev_avatar_t **)content);
 		break;
 	case EVENT_ENCRYPTION:
-		err = get_ev_encryption(obj, (ev_encryption_t **)content);
+		err = get_ev_encryption(obj, (mtx_ev_encryption_t **)content);
 		break;
 	case EVENT_HISTORY_VISIBILITY:
-		err = get_ev_history_visibility(obj, (ev_history_visibility_t **)content);
+		err = get_ev_history_visibility(obj, (mtx_ev_history_visibility_t **)content);
 		break;
 	case EVENT_REDACTION:
-		err = get_ev_redaction(obj, (ev_redaction_t **)content);
+		err = get_ev_redaction(obj, (mtx_ev_redaction_t **)content);
 		break;
 	case EVENT_MESSAGE:
-		err = get_ev_message(obj, (ev_message_t **)content);
+		err = get_ev_message(obj, (mtx_ev_message_t **)content);
 		break;
 	default:
 		assert(0);
@@ -489,7 +490,7 @@ static int get_event_content(const json_object *obj, eventtype_t type, void **co
 
 	return 0;
 }
-static int get_roomevent_fields(const json_object *obj, event_t *event)
+static int get_roomevent_fields(const json_object *obj, mtx_event_t *event)
 {
 	if (json_get_object_as_string_(obj, "event_id", &event->id))
 		return 1;
@@ -514,7 +515,7 @@ static int get_roomevent_fields(const json_object *obj, event_t *event)
 
 	return 0;
 }
-static int get_statevent_fields(const json_object *obj, event_t *event)
+static int get_statevent_fields(const json_object *obj, mtx_event_t *event)
 {
 	if (get_roomevent_fields(obj, event))
 		return 1;
@@ -530,9 +531,9 @@ static int get_statevent_fields(const json_object *obj, event_t *event)
 
 	return 0;
 }
-static int get_event(const json_object *obj, event_t **_event)
+static int get_event(const json_object *obj, mtx_event_t **_event)
 {
-	event_t *event = malloc(sizeof(*event));
+	mtx_event_t *event = malloc(sizeof(*event));
 	if (!event)
 		return 1;
 	memset(event, 0, sizeof(*event));
@@ -565,27 +566,27 @@ err_free_event:
 	return 1;
 }
 
-static int get_event_list(const json_object *obj, listentry_t *events)
+static int get_event_list(const json_object *obj, mtx_listentry_t *events)
 {
 	size_t n = json_object_array_length(obj);
 	for (size_t i = 0; i < n; ++i) {
 		json_object *o = json_object_array_get_idx(obj, i);
 
-		event_t *event;
+		mtx_event_t *event;
 		if (get_event(o, &event))
 			goto err_free_eventlist;
 
-		list_add(events, &event->entry);
+		mtx_list_add(events, &event->entry);
 	}
 
 	return 0;
 
 err_free_eventlist:
-	list_free(events, event_t, entry, free_event);
+	mtx_list_free(events, mtx_event_t, entry, free_event);
 	return 1;
 }
 
-static void redact_member_content(ev_member_t *member)
+static void redact_member_content(mtx_ev_member_t *member)
 {
 	free(member->avatarurl);
 	member->avatarurl = NULL;
@@ -607,10 +608,10 @@ static void redact_member_content(ev_member_t *member)
 	json_object_put(member->thirdparty_invite.signatures);
 	member->thirdparty_invite.signatures = NULL;
 
-	list_free(&member->invite_room_events, event_t, entry, free_event);
-	list_init(&member->invite_room_events);
+	mtx_list_free(&member->invite_room_events, mtx_event_t, entry, free_event);
+	mtx_list_init(&member->invite_room_events);
 }
-static void redact_create_content(ev_create_t *create)
+static void redact_create_content(mtx_ev_create_t *create)
 {
 	create->federate = -1;
 
@@ -623,12 +624,12 @@ static void redact_create_content(ev_create_t *create)
 	free(create->prev_last_eventid);
 	create->prev_last_eventid = NULL;
 }
-static void redact_powerlevels_content(ev_powerlevels_t *powerlevels)
+static void redact_powerlevels_content(mtx_ev_powerlevels_t *powerlevels)
 {
 	powerlevels->invite = -1;
 	powerlevels->roomnotif = -1;
 }
-static void redact(event_t *event)
+static void redact(mtx_event_t *event)
 {
 	switch (event->type) {
 		case EVENT_MEMBER:;
@@ -666,7 +667,7 @@ static void redact(event_t *event)
 	event->prevcontent = NULL;
 }
 
-static int get_room_summary(const json_object *obj, room_summary_t *summary)
+static int get_room_summary(const json_object *obj, mtx_room_summary_t *summary)
 {
 	if (json_get_object_as_string_array_(obj, "m.heroes", &summary->heroes) == -1)
 		return 1;
@@ -677,19 +678,19 @@ static int get_room_summary(const json_object *obj, room_summary_t *summary)
 	return 0;
 }
 static int update_timeline_chunks(const json_object *obj,
-		listentry_t *chunks, event_chunk_type_t chunktype)
+		mtx_listentry_t *chunks, mtx_event_chunk_type_t chunktype)
 {
-	event_chunk_t *chunk = NULL;
-	if (!list_empty(chunks))
-		chunk = list_entry_content(chunks->prev, event_chunk_t, entry);
+	mtx_event_chunk_t *chunk = NULL;
+	if (!mtx_list_empty(chunks))
+		chunk = mtx_list_entry_content(chunks->prev, mtx_event_chunk_t, entry);
 
 	if (!chunk || chunk->type != chunktype) {
-		event_chunk_t *c = malloc(sizeof(*c));
+		mtx_event_chunk_t *c = malloc(sizeof(*c));
 		if (!c)
 			return 1;
 		c->type = EVENT_CHUNK_MESSAGE;
-		list_init(&c->events);
-		list_add(chunks, &c->entry);
+		mtx_list_init(&c->events);
+		mtx_list_add(chunks, &c->entry);
 
 		chunk = c;
 	}
@@ -698,23 +699,23 @@ static int update_timeline_chunks(const json_object *obj,
 	for (size_t i = 0; i < n; ++i) {
 		json_object *o = json_object_array_get_idx(obj, i);
 
-		event_t *event;
+		mtx_event_t *event;
 		if (get_event(o, &event))
 			return 1;
 
 		if (event->type == EVENT_REDACTION) {
-			event_t *ev = find_event(chunks, event->redacts);
+			mtx_event_t *ev = find_event(chunks, event->redacts);
 			assert(ev);
 
 			redact(ev);
 		}
 
-		list_add(&chunk->events, &event->entry);
+		mtx_list_add(&chunk->events, &event->entry);
 	}
 
 	return 0;
 }
-static int update_joined_room_history(const json_object *obj, room_history_t *history)
+static int update_joined_room_history(const json_object *obj, mtx_room_history_t *history)
 {
 	json_object *summary;
 	if (json_object_object_get_ex(obj, "summary", &summary)
@@ -725,7 +726,7 @@ static int update_joined_room_history(const json_object *obj, room_history_t *hi
 	json_object *events;
 	json_object *state;
 	if (json_object_object_get_ex(obj, "state", &state)
-			&& json_object_object_get_ex(obj, "events", &events)
+			&& json_object_object_get_ex(state, "events", &events)
 			&& update_timeline_chunks(events,
 				&history->timeline.chunks, EVENT_CHUNK_STATE)) {
 		return 1;
@@ -759,7 +760,7 @@ static int update_joined_room_history(const json_object *obj, room_history_t *hi
 
 	return 0;
 }
-static int update_invited_room_history(const json_object *obj, room_history_t *history)
+static int update_invited_room_history(const json_object *obj, mtx_room_history_t *history)
 {
 	json_object *events;
 	json_object *state;
@@ -772,7 +773,7 @@ static int update_invited_room_history(const json_object *obj, room_history_t *h
 
 	return 0;
 }
-static int update_left_room_history(const json_object *obj, room_history_t *history)
+static int update_left_room_history(const json_object *obj, mtx_room_history_t *history)
 {
 	json_object *events;
 	json_object *state;
@@ -803,19 +804,19 @@ static int update_left_room_history(const json_object *obj, room_history_t *hist
 
 	return 0;
 }
-int update_room_histories(json_object *obj, listentry_t *joined,
-		listentry_t *invited, listentry_t *left)
+int update_room_histories(json_object *obj, mtx_listentry_t *joined,
+		mtx_listentry_t *invited, mtx_listentry_t *left)
 {
 	json_object *join;
 	if (json_object_object_get_ex(obj, "join", &join)) {
 		json_object_object_foreach(join, k, v) {
-			_room_t *r = find_room(joined, k);
+			mtx_room_t *r = find_room(joined, k);
 			if (!r) {
-				r = new_room(k, ROOM_CONTEXT_JOIN);
+				r = new_room(k, MTX_ROOM_CONTEXT_JOIN);
 				if (!r)
 					return 1;
 
-				list_add(joined, &r->entry);
+				mtx_list_add(joined, &r->entry);
 			}
 
 			if (update_joined_room_history(v, r->history))
@@ -828,13 +829,13 @@ int update_room_histories(json_object *obj, listentry_t *joined,
 	json_object *invite;
 	if (json_object_object_get_ex(obj, "invite", &invite)) {
 		json_object_object_foreach(invite, k, v) {
-			_room_t *r = find_room(invited, k);
+			mtx_room_t *r = find_room(invited, k);
 			if (!r) {
-				r = new_room(k, ROOM_CONTEXT_INVITE);
+				r = new_room(k, MTX_ROOM_CONTEXT_INVITE);
 				if (!r)
 					return 1;
 
-				list_add(invited, &r->entry);
+				mtx_list_add(invited, &r->entry);
 			}
 
 			if (update_invited_room_history(v, r->history))
@@ -847,13 +848,13 @@ int update_room_histories(json_object *obj, listentry_t *joined,
 	json_object *leave;
 	if (json_object_object_get_ex(obj, "leave", &leave)) {
 		json_object_object_foreach(leave, k, v) {
-			_room_t *r = find_room(left, k);
+			mtx_room_t *r = find_room(left, k);
 			if (!r) {
-				r = new_room(k, ROOM_CONTEXT_LEAVE);
+				r = new_room(k, MTX_ROOM_CONTEXT_LEAVE);
 				if (!r)
 					return 1;
 
-				list_add(left, &r->entry);
+				mtx_list_add(left, &r->entry);
 			}
 
 			if (update_left_room_history(v, r->history))
@@ -866,11 +867,11 @@ int update_room_histories(json_object *obj, listentry_t *joined,
 	return 0;
 }
 
-int get_presence(const json_object *obj, listentry_t *events)
+int get_presence(const json_object *obj, mtx_listentry_t *events)
 {
 	return 0;
 }
-int get_account_data(const json_object *obj, listentry_t *events)
+int get_account_data(const json_object *obj, mtx_listentry_t *events)
 {
 	return 0;
 }

@@ -4,9 +4,18 @@
 #include "lib/array.h"
 #include "mtx/state/apply.h"
 
-int apply_event_canonalias(const event_t *event, _room_t *r)
+static int unseti(int x)
 {
-	ev_canonalias_t *canonalias = event->content;
+	return x == -1;
+}
+static int unsets(void *s)
+{
+	return s == NULL;
+}
+
+int apply_event_canonalias(const mtx_event_t *event, mtx_room_t *r)
+{
+	mtx_ev_canonalias_t *canonalias = event->content;
 
 	if (canonalias->alias && strrpl(&r->canonalias, canonalias->alias))
 		return 1;
@@ -17,9 +26,9 @@ int apply_event_canonalias(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_event_create(const event_t *event, _room_t *r)
+int apply_event_create(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_create_t *create = event->content;
+	mtx_ev_create_t *create = event->content;
 
 	if (strrpl(&r->creator, create->creator))
 		return 1;
@@ -38,25 +47,25 @@ int apply_event_create(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_event_joinrules(const event_t *event, _room_t *r)
+int apply_event_joinrules(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_joinrules_t *joinrules = event->content;
+	mtx_ev_joinrules_t *joinrules = event->content;
 
 	r->joinrule = joinrules->rule;
 
 	return 0;
 }
 
-int apply_event_member(const event_t *event, _room_t *r)
+int apply_event_member(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_member_t *member = event->content;
+	mtx_ev_member_t *member = event->content;
 
-	member_t *m = find_member(&r->members, event->statekey);
+	mtx_member_t *m = mtx_find_member(&r->members, event->statekey);
 	if (!m) {
 		m = new_member();
 		if (!m)
 			return 1;
-		list_add(&r->members, &m->entry);
+		mtx_list_add(&r->members, &m->entry);
 	}
 
 	if (strrpl(&m->userid, event->statekey))
@@ -79,28 +88,28 @@ int apply_event_member(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_event_powerlevels(const event_t *event, _room_t *r)
+int apply_event_powerlevels(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_powerlevels_t *powerlevels = event->content;
+	mtx_ev_powerlevels_t *powerlevels = event->content;
 
-	if (powerlevels->ban != -1)
+	if (unseti(powerlevels->ban))
 		r->powerlevels.ban = powerlevels->ban;
 
-	if (powerlevels->invite != -1)
+	if (unseti(powerlevels->invite))
 		r->powerlevels.invite = powerlevels->invite;
 
-	if (powerlevels->kick != -1)
+	if (unseti(powerlevels->kick))
 		r->powerlevels.kick = powerlevels->kick;
 
-	if (powerlevels->redact != -1)
+	if (unseti(powerlevels->redact))
 		r->powerlevels.redact = powerlevels->redact;
 
-	if (powerlevels->statedefault != -1)
+	if (unseti(powerlevels->statedefault))
 		r->powerlevels.statedefault = powerlevels->statedefault;
 
-	for (listentry_t *e = powerlevels->events.next; e != &powerlevels->events; e = e->next) {
-		event_powerlevel_t *newplevel = list_entry_content(e, event_powerlevel_t, entry);
-		event_powerlevel_t *plevel = find_event_powerlevel(&r->powerlevels.events,
+	for (mtx_listentry_t *e = powerlevels->events.next; e != &powerlevels->events; e = e->next) {
+		mtx_event_powerlevel_t *newplevel = mtx_list_entry_content(e, mtx_event_powerlevel_t, entry);
+		mtx_event_powerlevel_t *plevel = find_event_powerlevel(&r->powerlevels.events,
 				newplevel->type);
 		if (!plevel) {
 			plevel = malloc(sizeof(*plevel));
@@ -111,12 +120,12 @@ int apply_event_powerlevels(const event_t *event, _room_t *r)
 		plevel->level = newplevel->level;
 	}
 
-	if (powerlevels->eventdefault != -1)
+	if (unseti(powerlevels->eventdefault))
 		r->powerlevels.eventdefault = powerlevels->eventdefault;
 
-	for (listentry_t *e = powerlevels->users.next; e != &powerlevels->users; e = e->next) {
-		user_powerlevel_t *newplevel = list_entry_content(e, user_powerlevel_t, entry);
-		user_powerlevel_t *plevel = find_user_powerlevel(&r->powerlevels.events,
+	for (mtx_listentry_t *e = powerlevels->users.next; e != &powerlevels->users; e = e->next) {
+		mtx_user_powerlevel_t *newplevel = mtx_list_entry_content(e, mtx_user_powerlevel_t, entry);
+		mtx_user_powerlevel_t *plevel = find_user_powerlevel(&r->powerlevels.events,
 				newplevel->id);
 		if (!plevel) {
 			plevel = malloc(sizeof(*plevel));
@@ -129,18 +138,18 @@ int apply_event_powerlevels(const event_t *event, _room_t *r)
 		plevel->level = newplevel->level;
 	}
 
-	if (powerlevels->usersdefault != -1)
+	if (unseti(powerlevels->usersdefault))
 		r->powerlevels.usersdefault = powerlevels->usersdefault;
 
-	if (powerlevels->roomnotif != -1)
+	if (unseti(powerlevels->roomnotif))
 		r->powerlevels.roomnotif = powerlevels->roomnotif;
 
 	return 0;
 }
 
-int apply_event_name(const event_t *event, _room_t *r)
+int apply_event_name(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_name_t *name = event->content;
+	mtx_ev_name_t *name = event->content;
 
 	if (name->name && strrpl(&r->name, name->name))
 		return 1;
@@ -148,9 +157,9 @@ int apply_event_name(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_event_topic(const event_t *event, _room_t *r)
+int apply_event_topic(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_topic_t *topic = event->content;
+	mtx_ev_topic_t *topic = event->content;
 
 	if (topic->topic && strrpl(&r->topic, topic->topic))
 		return 1;
@@ -158,9 +167,9 @@ int apply_event_topic(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_event_avatar(const event_t *event, _room_t *r)
+int apply_event_avatar(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_avatar_t *avatar = event->content;
+	mtx_ev_avatar_t *avatar = event->content;
 
 	if (avatar->url && strrpl(&r->avatarurl, avatar->url))
 		return 1;
@@ -185,9 +194,9 @@ int apply_event_avatar(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_event_encryption(const event_t *event, _room_t *r)
+int apply_event_encryption(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_encryption_t *encryption = event->content;
+	mtx_ev_encryption_t *encryption = event->content;
 
 	r->crypt.enabled = 1;
 
@@ -199,23 +208,23 @@ int apply_event_encryption(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_event_history_visibility(const event_t *event, _room_t *r)
+int apply_event_history_visibility(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_history_visibility_t *histvisib = event->content;
+	mtx_ev_history_visibility_t *histvisib = event->content;
 
 	r->histvisib = histvisib->visib;
 	return 0;
 }
 
-int apply_event_message(const event_t *event, _room_t *r)
+int apply_event_message(const mtx_event_t *event, mtx_room_t *r)
 {
-	ev_message_t *msg = event->content;
+	mtx_ev_message_t *msg = event->content;
 
-	msg_t *m = malloc(sizeof(*m));
+	mtx_msg_t *m = malloc(sizeof(*m));
 	if (!m)
 		return 1;
 	memset(m, 0, sizeof(*m));
-	list_add(&r->msgs, &m->entry);
+	mtx_list_add(&r->msgs, &m->entry);
 
 	m->type = msg->type;
 	if (strrpl(&m->body, msg->body))
@@ -232,7 +241,7 @@ int apply_event_message(const event_t *event, _room_t *r)
 	return 0;
 }
 
-int apply_room_summary(_room_t *r, room_summary_t *summary)
+int apply_room_summary(mtx_room_t *r, mtx_room_summary_t *summary)
 {
 	if (summary->heroes && strarr_rpl(&r->heroes, summary->heroes))
 		return 1;
@@ -244,7 +253,7 @@ int apply_room_summary(_room_t *r, room_summary_t *summary)
 
 	return 0;
 }
-int apply_statevent(const event_t *event, _room_t *r)
+int apply_statevent(const mtx_event_t *event, mtx_room_t *r)
 {
 	int err;
 	switch (event->type) {
@@ -286,7 +295,7 @@ int apply_statevent(const event_t *event, _room_t *r)
 
 	return 0;
 }
-int apply_message_event(const event_t *event, _room_t *r)
+int apply_message_event(const mtx_event_t *event, mtx_room_t *r)
 {
 	int err;
 	switch (event->type) {
@@ -301,21 +310,20 @@ int apply_message_event(const event_t *event, _room_t *r)
 
 	return 0;
 }
-int apply_timeline(_room_t *r, timeline_t *timeline)
+int apply_timeline(mtx_room_t *r, mtx_timeline_t *timeline)
 {
-	for (listentry_t *e = timeline->chunks.next; e != timeline->chunks.prev; e = e->next) {
-		event_chunk_t *chunk = list_entry_content(e, event_chunk_t, entry);
-		for (listentry_t *f = chunk->events.next; f != &chunk->events; f = f->next) {
-			event_t *ev = list_entry_content(e, event_t, entry);
+	for (mtx_listentry_t *e = timeline->chunks.next; e != timeline->chunks.prev; e = e->next) {
+		mtx_event_chunk_t *chunk = mtx_list_entry_content(e, mtx_event_chunk_t, entry);
+		for (mtx_listentry_t *f = chunk->events.next; f != &chunk->events; f = f->next) {
+			mtx_event_t *ev = mtx_list_entry_content(e, mtx_event_t, entry);
 			if (is_statevent(ev->type) && apply_statevent(ev, r))
 				return 1;
 		}
 	}
 
-	event_chunk_t *lastchunk = list_entry_content(timeline->chunks.prev, event_chunk_t, entry);
+	mtx_event_chunk_t *lastchunk = mtx_list_entry_content(timeline->chunks.prev, mtx_event_chunk_t, entry);
 	assert(lastchunk->type == EVENT_CHUNK_MESSAGE);
-	for (listentry_t *e = lastchunk->events.next; e != &lastchunk->events; e = e->next) {
-		event_t *ev = list_entry_content(e, event_t, entry);
+	mtx_list_foreach(&lastchunk->events, mtx_event_t, entry, ev) {
 		if (is_message_event(ev->type)) {
 			if (apply_message_event(ev, r))
 				return 1;
@@ -327,9 +335,9 @@ int apply_timeline(_room_t *r, timeline_t *timeline)
 
 	return 0;
 }
-int compute_joined_state_from_history(_room_t *r)
+int compute_joined_state_from_history(mtx_room_t *r)
 {
-	room_history_t *history = r->history;
+	mtx_room_history_t *history = r->history;
 
 	if (apply_room_summary(r, &history->summary))
 		return 1;
@@ -343,18 +351,18 @@ int compute_joined_state_from_history(_room_t *r)
 		r->notif_highlight_count = history->notif_highlight_count;
 	return 0;
 }
-int compute_invited_state_from_history(_room_t *r)
+int compute_invited_state_from_history(mtx_room_t *r)
 {
-	room_history_t *history = r->history;
+	mtx_room_history_t *history = r->history;
 
 	if (apply_timeline(r, &history->timeline))
 		return 1;
 
 	return 0;
 }
-int compute_left_state_from_history(_room_t *r)
+int compute_left_state_from_history(mtx_room_t *r)
 {
-	room_history_t *history = r->history;
+	mtx_room_history_t *history = r->history;
 
 	if (apply_timeline(r, &history->timeline))
 		return 1;
@@ -362,7 +370,7 @@ int compute_left_state_from_history(_room_t *r)
 	return 0;
 }
 
-int compute_room_state_from_history(_room_t *r)
+int compute_room_state_from_history(mtx_room_t *r)
 {
 	if (!r->dirty)
 		return 0;
@@ -371,13 +379,13 @@ int compute_room_state_from_history(_room_t *r)
 
 	int err;
 	switch (r->context) {
-	case ROOM_CONTEXT_JOIN:
+	case MTX_ROOM_CONTEXT_JOIN:
 		err = compute_joined_state_from_history(r);
 		break;
-	case ROOM_CONTEXT_INVITE:
+	case MTX_ROOM_CONTEXT_INVITE:
 		err = compute_invited_state_from_history(r);
 		break;
-	case ROOM_CONTEXT_LEAVE:
+	case MTX_ROOM_CONTEXT_LEAVE:
 		err = compute_left_state_from_history(r);
 		break;
 	default:

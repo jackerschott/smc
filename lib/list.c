@@ -1,14 +1,14 @@
 #include "lib/list.h"
 
-void __list_del(listentry_t *prev, listentry_t *next)
+void __list_del(mtx_listentry_t *prev, mtx_listentry_t *next)
 {
 	prev->next = next;
 	next->prev = prev;
 }
-void __list_concat(const listentry_t *list, listentry_t *prev, listentry_t *next)
+void __list_concat(const mtx_listentry_t *list, mtx_listentry_t *prev, mtx_listentry_t *next)
 {
-	listentry_t *first = list->next;
-	listentry_t *last = list->prev;
+	mtx_listentry_t *first = list->next;
+	mtx_listentry_t *last = list->prev;
 
 	first->prev = prev;
 	prev->next = first;
@@ -17,23 +17,23 @@ void __list_concat(const listentry_t *list, listentry_t *prev, listentry_t *next
 	next->prev = last;
 }
 
-void list_init(listentry_t *e)
+void mtx_list_init(mtx_listentry_t *e)
 {
 	e->next = e;
 	e->prev = e;
 }
-void list_concat(listentry_t *head, listentry_t *list)
+void mtx_list_concat(mtx_listentry_t *head, mtx_listentry_t *list)
 {
-	if (!list_empty(list))
+	if (!mtx_list_empty(list))
 		__list_concat(list, head->prev, head);
 }
-void list_concat_head(listentry_t *head, listentry_t *list)
+void list_concat_head(mtx_listentry_t *head, mtx_listentry_t *list)
 {
-	if (!list_empty(list))
+	if (!mtx_list_empty(list))
 		__list_concat(list, head, head->next);
 }
 
-void __list_add(listentry_t *prev, listentry_t *next, listentry_t *e)
+void __list_add(mtx_listentry_t *prev, mtx_listentry_t *next, mtx_listentry_t *e)
 {
 	prev->next = e;
 	e->prev = prev;
@@ -41,20 +41,20 @@ void __list_add(listentry_t *prev, listentry_t *next, listentry_t *e)
 	e->next = next;
 	next->prev = e;
 }
-void list_add(listentry_t *head, listentry_t *e)
+void mtx_list_add(mtx_listentry_t *head, mtx_listentry_t *e)
 {
 	__list_add(head->prev, head, e);
 }
-void list_add_head(listentry_t *head, listentry_t *e)
+void mtx_list_add_head(mtx_listentry_t *head, mtx_listentry_t *e)
 {
 	__list_add(head, head->next, e);
 }
 
-void list_del(listentry_t *e)
+void mtx_list_del(mtx_listentry_t *e)
 {
 	__list_del(e->prev, e->next);
 }
-void list_replace(struct listentry_t *old, struct listentry_t *new)
+void mtx_list_replace(struct mtx_listentry_t *old, struct mtx_listentry_t *new)
 {
         new->next = old->next;
         new->next->prev = new;
@@ -62,19 +62,19 @@ void list_replace(struct listentry_t *old, struct listentry_t *new)
         new->prev->next = new;
 }
 
-size_t list_length(listentry_t *head)
+size_t mtx_list_length(mtx_listentry_t *head)
 {
 	size_t l = 0;
-	listentry_t *e = head;
+	mtx_listentry_t *e = head;
 	while ((e = e->next) != head) {
 		++l;
 	}
 	return l;
 }
-void list_entry_at(listentry_t *head, size_t idx, listentry_t **entry)
+void mtx_list_entry_at(mtx_listentry_t *head, size_t idx, mtx_listentry_t **entry)
 {
 	size_t i = 0;
-	listentry_t *e = head->next;
+	mtx_listentry_t *e = head->next;
 	while (i < idx && e != head) {
 		++i;
 		e = e->next;
@@ -82,7 +82,7 @@ void list_entry_at(listentry_t *head, size_t idx, listentry_t **entry)
 	*entry = e;
 }
 
-int list_empty(listentry_t *head)
+int mtx_list_empty(mtx_listentry_t *head)
 {
 	return head->next == head;
 }

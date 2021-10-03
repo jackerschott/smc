@@ -30,8 +30,8 @@ void free_device(device_t *dev)
 void free_device_list(device_list_t *devlist)
 {
 	free(devlist->owner);
-	for (listentry_t *e = devlist->devices.next; e != &devlist->devices; e = e->next) {
-		device_t *dev = list_entry_content(e, device_t, entry);
+	for (mtx_listentry_t *e = devlist->devices.next; e != &devlist->devices; e = e->next) {
+		device_t *dev = mtx_list_entry_content(e, device_t, entry);
 		free_device(dev);
 	}
 	free(devlist);
@@ -132,16 +132,16 @@ device_t *create_device(OlmAccount *account, const char *id)
 	return dev;
 }
 
-int init_device_lists(listentry_t *devices, const listentry_t *devtrackinfos)
+int init_device_lists(mtx_listentry_t *devices, const mtx_listentry_t *devtrackinfos)
 {
-	for (listentry_t *e = devtrackinfos->next; e != devtrackinfos; e = e->next) {
-		device_tracking_info_t *info = list_entry_content(e, device_tracking_info_t, entry);
+	for (mtx_listentry_t *e = devtrackinfos->next; e != devtrackinfos; e = e->next) {
+		device_tracking_info_t *info = mtx_list_entry_content(e, device_tracking_info_t, entry);
 
 		device_list_t *devlist = malloc(sizeof(*devlist));
 		if (!devlist)
 			return 1;
 
-		list_init(&devlist->devices);
+		mtx_list_init(&devlist->devices);
 		devlist->dirty = info->dirty;
 		devlist->owner = NULL;
 
@@ -150,17 +150,17 @@ int init_device_lists(listentry_t *devices, const listentry_t *devtrackinfos)
 			return 1;
 		}
 
-		list_add(devices, &devlist->entry);
+		mtx_list_add(devices, &devlist->entry);
 	}
 
 	return 0;
 }
 
-static device_list_t *find_device_list(listentry_t *devices, char *owner)
+static device_list_t *find_device_list(mtx_listentry_t *devices, char *owner)
 {
 	device_list_t *devlist = NULL;
-	for (listentry_t *e = devices->next; e != devices; e = e->next) {
-		device_list_t *dl = list_entry_content(e, device_list_t, entry);
+	for (mtx_listentry_t *e = devices->next; e != devices; e = e->next) {
+		device_list_t *dl = mtx_list_entry_content(e, device_list_t, entry);
 		if (strcmp(dl->owner, owner) == 0) {
 			devlist = dl;
 			break;
@@ -171,8 +171,8 @@ static device_list_t *find_device_list(listentry_t *devices, char *owner)
 static device_t *find_device(device_list_t *devlist, char *devid)
 {
 	device_t *dev = NULL;
-	for (listentry_t *e = devlist->devices.next; e != &devlist->devices; e = e->next) {
-		device_t *d = list_entry_content(e, device_t, entry);
+	for (mtx_listentry_t *e = devlist->devices.next; e != &devlist->devices; e = e->next) {
+		device_t *d = mtx_list_entry_content(e, device_t, entry);
 		if (strcmp(d->id, devid) == 0) {
 			dev = d;
 			break;
@@ -180,7 +180,7 @@ static device_t *find_device(device_list_t *devlist, char *devid)
 	}
 	return dev;
 }
-int update_device(listentry_t *devices, char *owner, char *devid, const json_object *devinfo)
+int update_device(mtx_listentry_t *devices, char *owner, char *devid, const json_object *devinfo)
 {
 	device_list_t *devlist = find_device_list(devices, owner);
 	if (!devlist) {
@@ -188,7 +188,7 @@ int update_device(listentry_t *devices, char *owner, char *devid, const json_obj
 		if (!devlist)
 			return -1;
 		devlist->owner = NULL;
-		list_init(&devlist->devices);
+		mtx_list_init(&devlist->devices);
 		devlist->dirty = 0;
 
 		if (strrpl(&devlist->owner, owner)) {
@@ -196,7 +196,7 @@ int update_device(listentry_t *devices, char *owner, char *devid, const json_obj
 			return -1;
 		}
 
-		list_add(devices, &devlist->entry);
+		mtx_list_add(devices, &devlist->entry);
 	}
 
 	device_t *dev = find_device(devlist, devid);
@@ -212,7 +212,7 @@ int update_device(listentry_t *devices, char *owner, char *devid, const json_obj
 			return -1;
 		}
 
-		list_add(&devlist->devices, &dev->entry);
+		mtx_list_add(&devlist->devices, &dev->entry);
 	}
 
 	int err;
@@ -238,7 +238,7 @@ int update_device(listentry_t *devices, char *owner, char *devid, const json_obj
 	return 0;
 }
 
-int update_device_lists(listentry_t *devices, const json_object *devlists)
+int update_device_lists(mtx_listentry_t *devices, const json_object *devlists)
 {
 	char **changed = NULL;
 	if (json_get_object_as_string_array_(devlists, "changed", &changed) == -1)
@@ -260,7 +260,7 @@ int update_device_lists(listentry_t *devices, const json_object *devlists)
 	if (left) {
 		for (size_t i = 0; left[i]; ++i) {
 			device_list_t *devlist = find_device_list(devices, left[i]);
-			list_del(&devlist->entry);
+			mtx_list_del(&devlist->entry);
 			free_device_list(devlist);
 		}
 	}
@@ -268,17 +268,17 @@ int update_device_lists(listentry_t *devices, const json_object *devlists)
 	return 0;
 }
 
-int get_device_otkey_counts(const json_object *obj, listentry_t *counts)
+int get_device_otkey_counts(const json_object *obj, mtx_listentry_t *counts)
 {
 	return 0;
 }
 
-int get_device_tracking_infos(listentry_t *devices, listentry_t *devtrackinfos)
+int get_device_tracking_infos(mtx_listentry_t *devices, mtx_listentry_t *devtrackinfos)
 {
-	list_init(devtrackinfos);
+	mtx_list_init(devtrackinfos);
 
-	for (listentry_t *e = devices->next; e != devices; e = e->next) {
-		device_list_t *devlist = list_entry_content(e, device_list_t, entry);
+	for (mtx_listentry_t *e = devices->next; e != devices; e = e->next) {
+		device_list_t *devlist = mtx_list_entry_content(e, device_list_t, entry);
 
 		device_tracking_info_t *info = malloc(sizeof(*info));
 		if (!info)
@@ -290,13 +290,13 @@ int get_device_tracking_infos(listentry_t *devices, listentry_t *devtrackinfos)
 			goto err_free_infos;
 		}
 
-		list_add(devtrackinfos, &info->entry);
+		mtx_list_add(devtrackinfos, &info->entry);
 	}
 
 	return 0;
 
 err_free_infos:
-	list_free(devtrackinfos, device_tracking_info_t, entry, free_device_tracking_info);
+	mtx_list_free(devtrackinfos, device_tracking_info_t, entry, free_device_tracking_info);
 	return 1;
 }
 

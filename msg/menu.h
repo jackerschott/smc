@@ -1,8 +1,6 @@
 #ifndef MENU_H
 #define MENU_H
 
-#include "lib/list.h"
-#include "api/state.h"
 #include "msg/ui.h"
 
 int room_menu_init(void);

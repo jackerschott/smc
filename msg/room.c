@@ -5,8 +5,7 @@
 
 #include <ncurses.h>
 
-#include "api/api.h"
-#include "lib/hcurs.h"
+#include "mtx/mtx.h"
 #include "msg/command.h"
 #include "msg/inputline.h"
 #include "msg/readmsg.h"
@@ -28,10 +27,10 @@ typedef struct {
 } pad_t;
 
 typedef struct {
-	listentry_t entry;
+	mtx_listentry_t entry;
 
-	msg_t *m;
-	member_t *mem;
+	mtx_msg_t *m;
+	mtx_member_t *mem;
 	char *content;
 	int height;
 	int width;
@@ -39,56 +38,44 @@ typedef struct {
 
 pad_t titlewin;
 pad_t msgwin;
-listentry_t msgboxes;
+mtx_listentry_t msgboxes;
 int initialized = 0;
 
-static member_t *get_member(char *userid)
-{
-	listentry_t *members = &smc_cur_room->members;
-	for (listentry_t *e = members->next; e != members; e = e->next) {
-		member_t *m = list_entry_content(e, member_t, entry);
-		if (strcmp(userid, m->userid) == 0) {
-			return m;
-		}
-	}
-	assert(0);
-}
+//static int send_msg(char *msg)
+//{
+//	char *body = strdup(msg);
+//	if (!body)
+//		return -1;
+//
+//	mtx_msg_t m;
+//	m.type = MSG_TEXT;
+//	m.body = body;
+//
+//	char *evid;
+//	if (api_send_msg(smc_cur_room->id, &m, &evid)) {
+//		free(body);
+//		return -1;
+//	}
+//	free(body);
+//	free(evid);
+//
+//	return 0;
+//}
 
-static int send_msg(char *msg)
-{
-	char *body = strdup(msg);
-	if (!body)
-		return -1;
-
-	msg_t m;
-	m.type = MSG_TEXT;
-	m.body = body;
-
-	char *evid;
-	if (api_send_msg(smc_cur_room->id, &m, &evid)) {
-		free(body);
-		return -1;
-	}
-	free(body);
-	free(evid);
-
-	return 0;
-}
-
-static int invite_users(size_t nids, char **userids)
-{
-	int err;
-	for (size_t i = 0; i < nids; ++i) {
-		err = api_invite(smc_cur_room->id, userids[i]);
-		if (err == 1) {
-			input_line_print("api err: %s\n", api_last_errmsg);
-			return 2;
-		} else if (err != 0) {
-			return 1;
-		}
-	}
-	return 0;
-}
+//static int invite_users(size_t nids, char **userids)
+//{
+//	int err;
+//	for (size_t i = 0; i < nids; ++i) {
+//		err = api_invite(smc_cur_room->id, userids[i]);
+//		if (err == 1) {
+//			input_line_print("api err: %s\n", api_last_errmsg);
+//			return 2;
+//		} else if (err != 0) {
+//			return 1;
+//		}
+//	}
+//	return 0;
+//}
 static int handle_command(char *cmd)
 {
 	command_t *c;
@@ -104,7 +91,7 @@ static int handle_command(char *cmd)
 
 	if (strcmp(c->name, "invite") == 0) {
 		command_invite_t invite = c->invite;
-		err = invite_users(invite.nuserids, invite.userids);
+		assert(0); //err = invite_users(invite.nuserids, invite.userids);
 		if (err == 2) {
 			return 0;
 		} else if (err != 0) {
@@ -134,7 +121,7 @@ static void calc_titlewin(void)
 	titlewin.height = 2;
 	titlewin.width = MAX(w, COLS);
 }
-static int calc_msgbox(msgbox_t *mb, member_t *mem, msg_t *m)
+static int calc_msgbox(msgbox_t *mb, mtx_member_t *mem, mtx_msg_t *m)
 {
 	char *content = malloc(strlen(m->body) + 1);
 	if (!content)
@@ -153,20 +140,19 @@ static int calc_msgbox(msgbox_t *mb, member_t *mem, msg_t *m)
 }
 static int calc_msgwin(void)
 {
-	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
-	list_init(&msgboxes);
+	mtx_list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+	mtx_list_init(&msgboxes);
 
 	int off = 0;
 	int maxwidth = 0;
-	listentry_t *msgs = &smc_cur_room->messages;
-	for (listentry_t *e = msgs->next; e != msgs; e = e->next) {
+	mtx_listentry_t *msgs = &smc_cur_room->msgs;
+	mtx_list_foreach(msgs, mtx_msg_t, entry, m) {
 		msgbox_t *mb = malloc(sizeof(*mb));
 		if (!mb)
 			goto err_free_msgboxes;
 		memset(mb, 0, sizeof(*mb));
 
-		msg_t *m = list_entry_content(e, msg_t, entry);
-		member_t *mem = get_member(m->sender);
+		mtx_member_t *mem = mtx_find_member(&smc_cur_room->members, m->sender);
 		if (calc_msgbox(mb, mem, m)) {
 			free(mb);
 			goto err_free_msgboxes;
@@ -175,7 +161,7 @@ static int calc_msgwin(void)
 		if (mb->width > maxwidth)
 			maxwidth = mb->width;
 
-		list_add(&msgboxes, &mb->entry);
+		mtx_list_add(&msgboxes, &mb->entry);
 	}
 
 	msgwin.y = 2;
@@ -185,13 +171,13 @@ static int calc_msgwin(void)
 	return 0;
 
 err_free_msgboxes:
-	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+	mtx_list_free(&msgboxes, msgbox_t, entry, free_msgbox);
 	return 1;
 }
 
 static void free_windows(void)
 {
-	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+	mtx_list_free(&msgboxes, msgbox_t, entry, free_msgbox);
 }
 static int init_windows(void)
 {
@@ -201,7 +187,7 @@ static int init_windows(void)
 		return 1;
 	titlewin.pad = titlepad;
 
-	list_init(&msgboxes);
+	mtx_list_init(&msgboxes);
 	calc_msgwin();
 
 	WINDOW *msgpad = newpad(msgwin.height + 1, msgwin.width);
@@ -213,7 +199,7 @@ static int init_windows(void)
 err_free_msgwin:
 	delwin(msgpad);
 err_free_msgboxes:
-	list_free(&msgboxes, msgbox_t, entry, free_msgbox);
+	mtx_list_free(&msgboxes, msgbox_t, entry, free_msgbox);
 	delwin(titlepad);
 	return 1;
 }
@@ -266,8 +252,8 @@ static void draw_message_window(void)
 	//refresh_msgwin(&msgwin);
 
 	wmove(msgwin.pad, 0, 0);
-	for (listentry_t *e = msgboxes.next; e != &msgboxes; e = e->next) {
-		msgbox_t *mb = list_entry_content(e, msgbox_t, entry);
+	for (mtx_listentry_t *e = msgboxes.next; e != &msgboxes; e = e->next) {
+		msgbox_t *mb = mtx_list_entry_content(e, msgbox_t, entry);
 
 		wattron(msgwin.pad, A_BOLD);
 		wprintw(msgwin.pad, "%s\n", mb->mem->displayname);
@@ -287,8 +273,9 @@ static int handle_normal_key_event(int ch)
 {
 	switch (ch) {
 	case 'o':
-		if (input_line_start(MSG_PROMPT, send_msg))
-			return 1;
+		assert(0);
+		//if (input_line_start(MSG_PROMPT, send_msg))
+		//	return 1;
 		break;
 	case ':':
 		input_line_start(CMD_PROMPT, handle_command);
