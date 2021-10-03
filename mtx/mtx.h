@@ -45,7 +45,8 @@ int mtx_recall_past_session(mtx_session_t *session, const char *hostname,
 const char *mtx_accesstoken(mtx_session_t *session);
 const char *mtx_device_id(mtx_session_t *session);
 
-int mtx_sync(mtx_session_t *session, int timeout);
+int mtx_sync(const mtx_session_t *session, int timeout, mtx_sync_response_t **_response);
+int mtx_apply_sync(mtx_session_t *session, mtx_sync_response_t *response);
 
 void mtx_roomlist_init(mtx_listentry_t *rooms);
 void mtx_roomlist_free(mtx_listentry_t *rooms);

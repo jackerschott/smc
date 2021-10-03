@@ -273,12 +273,6 @@ static int initialize_matrix_account(void)
 			goto err_matrix_cleanup;
 	}
 
-	if (update()) {
-		fprintf(stderr, "%s: Failed to perform initial sync\n", __func__);
-		mtx_free_session(smc_session);
-		return 1;
-	}
-
 	return 0;
 
 err_matrix_cleanup:
@@ -303,6 +297,11 @@ static void setup(void)
 		exit(1);
 	}
 
+	if (update()) {
+		fprintf(stderr, "%s: failed to perform initial sync\n", __func__);
+		goto err_matrix_account_free;
+	}
+
 	if (!initscr()) {
 		fprintf(stderr, "%s: failed to init ncurses\n", __func__);
 		goto err_matrix_account_free;
@@ -313,7 +312,7 @@ static void setup(void)
 		goto err_curses_free;
 	}
 
-	if (room_menu_init()) {
+	if (room_menu_init() || handle_sync(MODE_ROOM_MENU)) {
 		fprintf(stderr, "%s: failed to initialize room menu\n", __func__);
 		goto err_curses_free;
 	}

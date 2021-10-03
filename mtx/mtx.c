@@ -78,6 +78,10 @@ union mtx_id_t {
 	} phone;
 };
 
+struct mtx_sync_response_t {
+	json_object *resp;
+};
+
 #define RESP_READSIZE 4096U
 typedef struct {
 	size_t size;
@@ -857,7 +861,7 @@ err_local:
 	return 1;
 }
 
-int mtx_sync(mtx_session_t *session, int timeout)
+int mtx_sync(const mtx_session_t *session, int timeout, mtx_sync_response_t **_response)
 {
 	assert(session->accesstoken);
 
@@ -882,6 +886,24 @@ int mtx_sync(mtx_session_t *session, int timeout)
 				urlparams, NULL, &code, &resp))
 		return 1;
 
+	mtx_sync_response_t *response = malloc(sizeof(*response));
+	if (!response) {
+		json_object_put(resp);
+		goto err_local;
+	}
+	response->resp = resp;
+
+	*_response = response;
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
+}
+int mtx_apply_sync(mtx_session_t *session, mtx_sync_response_t *response)
+{
+	json_object *resp = response->resp;
+
 	char *nextbatch = NULL;
 	if (json_get_object_as_string_(resp, "next_batch", &nextbatch))
 		goto err_local;
@@ -902,6 +924,7 @@ int mtx_sync(mtx_session_t *session, int timeout)
 			goto err_local;
 	}
 
+	json_object_put(resp);
 	return 0;
 
 err_local:

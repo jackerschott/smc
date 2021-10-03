@@ -9,7 +9,14 @@ pthread_mutex_t smc_synclock;
 
 int update(void)
 {
-	if (mtx_sync(smc_session, SYNC_TIMEOUT))
+	mtx_sync_response_t *response;
+	if (mtx_sync(smc_session, SYNC_TIMEOUT, &response))
+		return 1;
+
+	pthread_mutex_lock(&smc_synclock);
+	int err = mtx_apply_sync(smc_session, response);
+	pthread_mutex_unlock(&smc_synclock);
+	if (err)
 		return 1;
 
 	return 0;
@@ -29,10 +36,7 @@ void *sync_main(void *args)
 
 	struct timespec ts = {.tv_sec = 0, .tv_nsec = 100 * 1000 * 1000};
 	while (1) {
-		pthread_mutex_lock(&smc_synclock);
-		int err = update();
-		pthread_mutex_unlock(&smc_synclock);
-		if (err)
+		if (update())
 			goto err_cleanup;
 
 		pthread_mutex_lock(&smc_synclock);

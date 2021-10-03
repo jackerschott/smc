@@ -10,6 +10,9 @@ typedef struct mtx_session_t mtx_session_t;
 union mtx_id_t;
 typedef union mtx_id_t mtx_id_t;
 
+struct mtx_sync_response_t;
+typedef struct mtx_sync_response_t mtx_sync_response_t;
+
 typedef enum {
 	MTX_ERR_SUCCESS,
 	MTX_ERR_LOCAL,
