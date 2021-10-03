@@ -31,6 +31,7 @@ void mtx_cleanup(void);
 mtx_session_t *mtx_new_session(void);
 void mtx_free_session(mtx_session_t *session);
 
+
 void mtx_free_id(mtx_id_t *id);
 mtx_id_t *mtx_create_id_user(const char *username);
 mtx_id_t *mtx_create_id_third_party(const char *medium, const char *address);
@@ -45,6 +46,9 @@ int mtx_recall_past_session(mtx_session_t *session, const char *hostname,
 const char *mtx_accesstoken(mtx_session_t *session);
 const char *mtx_device_id(mtx_session_t *session);
 
+int mtx_exchange_keys(mtx_session_t *session, const mtx_listentry_t *devtrackinfos,
+		const char *sincetoken, int timeout);
+
 int mtx_sync(const mtx_session_t *session, int timeout, mtx_sync_response_t **_response);
 int mtx_apply_sync(mtx_session_t *session, mtx_sync_response_t *response);
 
@@ -54,6 +58,9 @@ int mtx_roomlist_update(mtx_session_t *session,
 		mtx_listentry_t *_rooms, mtx_room_context_t context);
 int mtx_has_dirty_rooms(mtx_session_t *session, mtx_room_context_t context);
 
+void mtx_print_devices(mtx_session_t *session);
 
+mtx_error_t mtx_last_error(void);
+char *mtx_last_error_msg(void);
 
 #endif /* MTX_MTX_H */

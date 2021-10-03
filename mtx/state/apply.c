@@ -107,35 +107,37 @@ int apply_event_powerlevels(const mtx_event_t *event, mtx_room_t *r)
 	if (unseti(powerlevels->statedefault))
 		r->powerlevels.statedefault = powerlevels->statedefault;
 
-	for (mtx_listentry_t *e = powerlevels->events.next; e != &powerlevels->events; e = e->next) {
-		mtx_event_powerlevel_t *newplevel = mtx_list_entry_content(e, mtx_event_powerlevel_t, entry);
-		mtx_event_powerlevel_t *plevel = find_event_powerlevel(&r->powerlevels.events,
-				newplevel->type);
+	mtx_list_foreach(&powerlevels->events, mtx_event_powerlevel_t, entry, neweplevel) {
+		mtx_event_powerlevel_t *plevel = find_event_powerlevel(
+				&r->powerlevels.events, neweplevel->type);
 		if (!plevel) {
 			plevel = malloc(sizeof(*plevel));
 			if (!plevel)
 				return 1;
+			memset(plevel, 0, sizeof(*plevel));
+			mtx_list_add(&r->powerlevels.events, &plevel->entry);
 		}
-		plevel->type = newplevel->type;
-		plevel->level = newplevel->level;
+		plevel->type = neweplevel->type;
+		plevel->level = neweplevel->level;
 	}
 
 	if (unseti(powerlevels->eventdefault))
 		r->powerlevels.eventdefault = powerlevels->eventdefault;
 
-	for (mtx_listentry_t *e = powerlevels->users.next; e != &powerlevels->users; e = e->next) {
-		mtx_user_powerlevel_t *newplevel = mtx_list_entry_content(e, mtx_user_powerlevel_t, entry);
-		mtx_user_powerlevel_t *plevel = find_user_powerlevel(&r->powerlevels.events,
-				newplevel->id);
+	mtx_list_foreach(&powerlevels->users, mtx_user_powerlevel_t, entry, newuplevel) {
+		mtx_user_powerlevel_t *plevel = find_user_powerlevel(
+				&r->powerlevels.users, newuplevel->id);
 		if (!plevel) {
 			plevel = malloc(sizeof(*plevel));
 			if (!plevel)
 				return 1;
+			memset(plevel, 0, sizeof(*plevel));
+			mtx_list_add(&r->powerlevels.users, &plevel->entry);
 		}
 
-		if (strrpl(&plevel->id, newplevel->id))
+		if (strrpl(&plevel->id, newuplevel->id))
 			return 1;
-		plevel->level = newplevel->level;
+		plevel->level = newuplevel->level;
 	}
 
 	if (unseti(powerlevels->usersdefault))

@@ -246,6 +246,8 @@ static int initialize_matrix_account(void)
 
 	smc_session = mtx_new_session();
 	if (!smc_session) {
+		free(devid);
+		free(token);
 		mtx_cleanup();
 		return 1;
 	}
@@ -273,10 +275,14 @@ static int initialize_matrix_account(void)
 			goto err_matrix_cleanup;
 	}
 
+	free(devid);
+	free(token);
 	return 0;
 
 err_matrix_cleanup:
 	mtx_free_session(smc_session);
+	free(devid);
+	free(token);
 	mtx_cleanup();
 	return 1;
 }
@@ -378,6 +384,7 @@ static void run(void)
 
 err_cleanup:
 	cleanup();
+	fprintf(stderr, "%s: error during main loop", __func__);
 	exit(1);
 }
 static void cleanup(void)

@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "lib/array.h"
 #include "lib/hjson.h"
 
 int json_get_object_as_int_(const json_object *obj, const char *key, int32_t *i)
@@ -73,17 +74,12 @@ int json_get_object_as_string_array_(const json_object *obj, const char *key, ch
 	if (!json_object_object_get_ex(obj, key, &tmp))
 		return 1;
 
-	if (*_strs) {
-		for (size_t i = 0; (*_strs)[i]; ++i) {
-			free((*_strs)[i]);
-		}
-	}
+	strarr_free(*_strs);
 
 	size_t n = json_object_array_length(obj);
-	char **strs = realloc(*_strs, (n + 1) * sizeof(*strs));
+	char **strs = strarr_new(n);
 	if (!strs)
 		return -1;
-	memset(strs, 0, (n + 1) * sizeof(*strs));
 
 	for (size_t i = 0; i < n; ++i) {
 		json_object *element = json_object_array_get_idx(obj, i);

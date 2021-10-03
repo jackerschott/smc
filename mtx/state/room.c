@@ -596,7 +596,7 @@ void free_event_content(mtx_eventtype_t type, void *content)
 		free_ev_joinrules(content);
 		break;
 	case EVENT_MEMBER:
-		free_member(content);
+		free_ev_member(content);
 		break;
 	case EVENT_POWERLEVELS:
 		free_ev_powerlevels(content);
@@ -618,6 +618,9 @@ void free_event_content(mtx_eventtype_t type, void *content)
 		break;
 	case EVENT_REDACTION:
 		free_ev_redaction(content);
+		break;
+	case EVENT_MESSAGE:
+		free_ev_message(content);
 		break;
 	default:
 		assert(0);
@@ -649,6 +652,7 @@ void free_event_chunk(mtx_event_chunk_t *chunk)
 		return;
 
 	mtx_list_free(&chunk->events, mtx_event_t, entry, free_event);
+	free(chunk);
 }
 void *dup_event_content(mtx_eventtype_t type, void *content)
 {
@@ -751,7 +755,7 @@ mtx_event_t *dup_event(mtx_event_t *event)
 		void *content = dup_event_content(event->type, event->content);
 		if (!content)
 			goto err_free_event;
-		ev->content = event->content;
+		ev->content = content;
 	}
 
 	return ev;
@@ -826,6 +830,8 @@ void free_room_history(mtx_room_history_t *history)
 
 	mtx_list_free(&history->ephemeral, mtx_event_t, entry, free_event);
 	mtx_list_free(&history->account, mtx_event_t, entry, free_event);
+
+	free(history);
 }
 void free_room_history_context(mtx_room_t *r)
 {
@@ -985,7 +991,7 @@ mtx_msg_t *dup_msg(mtx_msg_t *msg)
 	void *content = dup_message_content(msg->type, msg->content);
 	if (!content)
 		goto err_free_msg;
-	m->content = msg->content;
+	m->content = content;
 
 	return m;
 

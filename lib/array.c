@@ -3,9 +3,9 @@
 #include "lib/array.h"
 #include "lib/util.h"
 
-char **strarr_new(void)
+char **strarr_new(size_t n)
 {
-	char **arr = malloc(sizeof(*arr));
+	char **arr = malloc((n + 1) * sizeof(*arr));
 	if (!arr)
 		return NULL;
 	memset(arr, 0, sizeof(*arr));

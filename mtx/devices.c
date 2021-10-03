@@ -5,9 +5,10 @@
 #include <json-c/json.h>
 #include <olm/olm.h>
 
-#include "mtx/devices.h"
+#include "lib/array.h"
 #include "lib/hjson.h"
 #include "lib/list.h"
+#include "mtx/devices.h"
 
 const char *crypto_algorithms_msg[] = {
 	"m.olm.v1.curve25519-aes-sha2",
@@ -19,9 +20,7 @@ void free_device(device_t *dev)
 	free(dev->id);
 	json_object_put(dev->identkeys);
 	json_object_put(dev->otkeys);
-	for (size_t i = 0; dev->algorithms[i]; ++i) {
-		free(dev->algorithms[i]);
-	}
+	strarr_free(dev->algorithms);
 
 	free(dev->displayname);
 
@@ -60,6 +59,7 @@ static json_object *create_device_keys(OlmAccount *account)
 		free(identkey);
 		return NULL;
 	}
+	free(identkey);
 
 	return keys;
 }
@@ -99,6 +99,7 @@ static json_object *create_one_time_keys(OlmAccount *account)
 		return NULL;
 	}
 
+	free(otkeys);
 	return keys;
 }
 
@@ -134,6 +135,9 @@ device_t *create_device(OlmAccount *account, const char *id)
 
 int init_device_lists(mtx_listentry_t *devices, const mtx_listentry_t *devtrackinfos)
 {
+	if (!devtrackinfos)
+		return 0;
+
 	for (mtx_listentry_t *e = devtrackinfos->next; e != devtrackinfos; e = e->next) {
 		device_tracking_info_t *info = mtx_list_entry_content(e, device_tracking_info_t, entry);
 
@@ -316,7 +320,15 @@ json_object *device_keys_to_export_format(const json_object *_keys, const char *
 		strcat(key, ":");
 		strcat(key, devid);
 
-		if (json_object_object_add(keys, key, v)) {
+		json_object *identkey = NULL;
+		if (json_object_deep_copy(v, &identkey, NULL)) {
+			free(key);
+			json_object_put(keys);
+			return NULL;
+		}
+
+		if (json_object_object_add(keys, key, identkey)) {
+			json_object_put(identkey);
 			free(key);
 			json_object_put(keys);
 			return NULL;

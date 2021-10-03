@@ -166,7 +166,7 @@ static int calc_msgwin(void)
 
 	msgwin.y = 2;
 	msgwin.x = 0;
-	msgwin.height = off - 1;
+	msgwin.height = MAX(off - 1, 0);
 	msgwin.width = maxwidth + 1;
 	return 0;
 

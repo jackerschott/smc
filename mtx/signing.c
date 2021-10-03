@@ -73,6 +73,10 @@ int sign_json(OlmAccount *account, json_object *obj, const char *userid, const c
 		free(signature);
 		return 1;
 	}
+	strcpy(signkey, algorithm_signing);
+	strcat(signkey, ":");
+	strcat(signkey, keyident);
+
 	if (json_add_string_(obj, signkey, signature)) {
 		free(signkey);
 		free(signature);

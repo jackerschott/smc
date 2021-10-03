@@ -305,18 +305,18 @@ void mtx_free_session(mtx_session_t *session)
 	if (!session)
 		return;
 
-	//free(session->nextbatch);
-
 	free(session->hostname);
 	free(session->userid);
 	free(session->accesstoken);
 
-	//free(session->dev.id);
-	//free(session->dev.id);
-	//json_object_put(session->dev.identkeys);
-	//json_object_put(session->dev.otkeys);
-
+	mtx_list_free(&session->devices, device_list_t, entry, free_device_list);
+	free_device(session->device);
 	free_olm_account(session->olmaccount);
+
+	free(session->nextbatch);
+	mtx_list_free(&session->joinedrooms, mtx_room_t, entry, free_room);
+	mtx_list_free(&session->invitedrooms, mtx_room_t, entry, free_room);
+	mtx_list_free(&session->leftrooms, mtx_room_t, entry, free_room);
 
 	free(session);
 }
@@ -621,12 +621,14 @@ int mtx_recall_past_session(mtx_session_t *session, const char *hostname,
 
 	if (strrpl(&session->hostname, hs))
 		goto err_local;
+	free(hs);
 
 	if (strrpl(&session->accesstoken, accesstoken))
 		goto err_local;
 
 	if (strrpl(&session->userid, userid))
 		goto err_local;
+	free(userid);
 
 	OlmAccount *acc = create_olm_account();
 	if (!acc)
@@ -665,8 +667,8 @@ static int upload_keys(const mtx_session_t *session)
 		goto err_free_data;
 	}
 
-	json_object *keys = device_keys_to_export_format(session->device->identkeys,
-			session->device->id);
+	json_object *keys = device_keys_to_export_format(
+			session->device->identkeys, session->device->id);
 	if (!keys)
 		goto err_free_data;
 
@@ -674,6 +676,7 @@ static int upload_keys(const mtx_session_t *session)
 		json_object_put(keys);
 		goto err_free_data;
 	}
+
 
 	if (sign_json(session->olmaccount, devkeys, session->userid, session->device->id))
 		goto err_free_data;
@@ -690,6 +693,7 @@ static int upload_keys(const mtx_session_t *session)
 
 	// TODO: implement rest of one time keys
 
+
 	char urlparams[URL_BUFSIZE];
 	strcpy(urlparams, "access_token=");
 	strcat(urlparams, session->accesstoken);
@@ -703,6 +707,9 @@ static int upload_keys(const mtx_session_t *session)
 	}
 	json_object_put(data);
 
+	printf("%s\n", json_object_to_json_string_ext(resp, JSON_C_TO_STRING_PRETTY));
+
+	json_object_put(resp);
 	return 0;
 
 err_free_data:
@@ -909,6 +916,7 @@ int mtx_apply_sync(mtx_session_t *session, mtx_sync_response_t *response)
 		goto err_local;
 	if (strrpl(&session->nextbatch, nextbatch))
 		goto err_local;
+	free(nextbatch);
 
 	json_object *rooms;
 	if (json_object_object_get_ex(resp, "rooms", &rooms)) {
@@ -925,6 +933,7 @@ int mtx_apply_sync(mtx_session_t *session, mtx_sync_response_t *response)
 	}
 
 	json_object_put(resp);
+	free(response);
 	return 0;
 
 err_local:
@@ -1011,4 +1020,41 @@ int mtx_sync_keys(mtx_session_t *session, int timeout)
 		return 1;
 
 	return 0;
+}
+
+static void print_device(device_t *dev)
+{
+	printf("id: %s\n", dev->id);
+
+	if (dev->identkeys) {
+		printf("identkeys:\n");
+		printf("%s\n", json_object_to_json_string_ext(dev->identkeys,
+					JSON_C_TO_STRING_PRETTY));
+	}
+
+	if (dev->otkeys) {
+		printf("otkeys:\n");
+		printf("%s\n", json_object_to_json_string_ext(dev->otkeys,
+					JSON_C_TO_STRING_PRETTY));
+	}
+
+	if (dev->algorithms) {
+		printf("algorithms:\n");
+		for (size_t i = 0; dev->algorithms[i]; ++i) {
+			printf("\t%s", dev->algorithms[i]);
+		}
+	}
+
+	if (dev->displayname)
+		printf("displayname: %s\n", dev->displayname);
+}
+void mtx_print_devices(mtx_session_t *session)
+{
+	printf("------- device -------\n");
+	print_device(session->device);
+
+	printf("------- other devices -------\n");
+	mtx_list_foreach(&session->devices, device_t, entry, dev) {
+		print_device(dev);
+	}
 }

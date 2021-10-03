@@ -206,7 +206,7 @@ static int get_ev_powerlevels(const json_object *obj, mtx_ev_powerlevels_t **_po
 			plevel->id = id;
 			plevel->level = json_object_get_int(v);
 
-			mtx_list_add(&powerlevels->events, &plevel->entry);
+			mtx_list_add(&powerlevels->users, &plevel->entry);
 		}
 	}
 	json_get_object_as_int_(obj, "users_default", &powerlevels->usersdefault);
