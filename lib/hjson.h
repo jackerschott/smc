@@ -18,6 +18,7 @@ int json_get_object_as_object_(const json_object *obj, const char *key, json_obj
 
 int json_add_int_(json_object *obj, const char *key, int i);
 int json_add_string_(json_object *obj, const char *key, const char *str);
+int json_add_bool_(json_object *obj, const char *key, int b);
 int json_add_enum_(json_object *obj, const char *key, int e, const char **strs);
 int json_add_string_array_(json_object *obj, const char *key, int n, const char **str);
 int json_add_array_(json_object *obj, const char *key, json_object **array);

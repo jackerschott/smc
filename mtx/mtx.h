@@ -31,6 +31,10 @@ void mtx_cleanup(void);
 mtx_session_t *mtx_new_session(void);
 void mtx_free_session(mtx_session_t *session);
 
+int mtx_register_user(mtx_session_t *session, const char *hostname, const char *username,
+		const char *pass, const char *devid, const char *devname, const int login);
+int mtx_register_guest(mtx_session_t *session, const char *hostname, const char *username,
+		const char *pass, const char *devid, const char *devname, const int login);
 
 void mtx_free_id(mtx_id_t *id);
 mtx_id_t *mtx_create_id_user(const char *username);

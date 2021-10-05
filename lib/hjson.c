@@ -139,6 +139,17 @@ int json_add_string_(json_object *obj, const char *key, const char *str)
 
 	return 0;
 }
+int json_add_bool_(json_object *obj, const char *key, int b)
+{
+	json_object *boolobj = json_object_new_boolean(b);
+	if (!boolobj)
+		return 1;
+
+	if (json_object_object_add(obj, key, boolobj))
+		return 1;
+	
+	return 0;
+}
 int json_add_enum_(json_object *obj, const char *key, int e, const char **strs)
 {
 	if (!strs)

@@ -56,6 +56,11 @@ struct mtx_session_t {
 };
 
 typedef enum {
+	ACCOUNT_USER,
+	ACCOUNT_GUEST,
+} account_type_t;
+
+typedef enum {
 	MTX_ID_USER,
 	MTX_ID_THIRD_PARTY,
 	MTX_ID_PHONE,
@@ -339,6 +344,114 @@ err_local:
 	return NULL;
 }
 
+static const char *get_homeserver(const char *userid)
+{
+	const char *c = strchr(userid, ':');
+	assert(c && strlen(c) > 1);
+
+	return c + 1;
+}
+static int register_account(mtx_session_t *session, const char *hostname, const account_type_t type,
+		const char *username, const char *pass, const char *devid, const char *devname,
+		const int login)
+{
+	assert(username);
+
+	// TODO: authentification data
+
+	json_object *data = json_object_new_object();
+	if (!data)
+		goto err_local;
+
+	if (json_add_string_(data, "username", username)) {
+		json_object_put(data);
+		goto err_local;
+	}
+	if (pass && json_add_string_(data, "password", pass)) {
+		json_object_put(data);
+		goto err_local;
+	}
+	if (devid && json_add_string_(data, "device_id", devid)) {
+		json_object_put(data);
+		goto err_local;
+	}
+	if (devname && json_add_string_(data, "initial_device_display_name", devname)) {
+		json_object_put(data);
+		goto err_local;
+	}
+	if (json_add_bool_(data, "inhibit_login", !login)) {
+		json_object_put(data);
+		goto err_local;
+	}
+
+	int code;
+	json_object *resp;
+	if (api_call(hostname, "POST", "/_matrix/client/r0/register", NULL, data, &code, &resp)) {
+		json_object_put(data);
+		return 1;
+	}
+	json_object_put(data);
+
+	if (json_get_object_as_string_(resp, "user_id", &session->userid)) {
+		json_object_put(resp);
+		goto err_local;
+	}
+
+	const char *hs = get_homeserver(session->userid);
+	if (!hs) {
+		json_object_put(resp);
+		goto err_local;
+	}
+	if (strrpl(&session->hostname, hs)) {
+		json_object_put(resp); 
+		goto err_local;
+	}
+
+	if (login) {
+		char *_devid = NULL;
+		if (json_get_object_as_string_(resp, "access_token", &session->accesstoken)
+				|| json_get_object_as_string_(resp, "device_id", &_devid)) {
+			json_object_put(resp);
+			goto err_local;
+		}
+
+		OlmAccount *acc = create_olm_account();
+		if (!acc) {
+			json_object_put(resp);
+			goto err_local;
+		}
+		free_olm_account(session->olmaccount);
+		session->olmaccount = acc;
+
+		device_t *device = create_device(session->olmaccount, _devid);
+		if (!device) {
+			json_object_put(resp);
+			goto err_local;
+		}
+		free_device(session->device);
+		session->device = device;
+	}
+	json_object_put(resp);
+
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
+}
+int mtx_register_user(mtx_session_t *session, const char *hostname, const char *username,
+		const char *pass, const char *devid, const char *devname, const int login)
+{
+	return register_account(session, hostname, ACCOUNT_USER,
+			username, pass, devid, devname, login);
+}
+int mtx_register_guest(mtx_session_t *session, const char *hostname, const char *username,
+		const char *pass, const char *devid, const char *devname, const int login)
+{
+	return register_account(session, hostname, ACCOUNT_GUEST,
+			username, pass, devid, devname, login);
+}
+
 void mtx_free_id(mtx_id_t *id)
 {
 	if (id->type == MTX_ID_USER) {
@@ -468,16 +581,11 @@ static int login_data_add_id_phone(json_object *data, mtx_id_t *id)
 
 	return 0;
 }
-static char *get_homeserver(const char *userid)
-{
-	const char *c = strchr(userid, ':');
-	assert(c && strlen(c) > 1);
-
-	return strdup(c + 1);
-}
 static int login(mtx_session_t *session, const char *hostname, const char *typestr, mtx_id_t *id,
 		const char *secret, const char *_devid, const char *devname)
 {
+	assert(!session->accesstoken);
+
 	json_object *data = json_object_new_object();
 	if (!data)
 		goto err_local;
@@ -543,19 +651,22 @@ static int login(mtx_session_t *session, const char *hostname, const char *types
 	}
 	json_object_put(resp);
 
-	char *hs = get_homeserver(session->userid);
+	const char *hs = get_homeserver(session->userid);
 	if (!hs)
 		goto err_local;
-	session->hostname = hs;
+	if (strrpl(&session->hostname, hs))
+		goto err_local;
 
 	OlmAccount *acc = create_olm_account();
 	if (!acc)
 		goto err_local;
+	free(session->olmaccount);
 	session->olmaccount = acc;
 
 	device_t *device = create_device(session->olmaccount, devid);
 	if (!device)
 		goto err_local;
+	free(session->device);
 	session->device = device;
 
 	return 0;
@@ -615,13 +726,12 @@ int mtx_recall_past_session(mtx_session_t *session, const char *hostname,
 	if (query_user_id(hostname, accesstoken, &userid))
 		return 1;
 
-	char *hs = get_homeserver(userid);
+	const char *hs = get_homeserver(userid);
 	if (!hs)
 		goto err_local;
 
 	if (strrpl(&session->hostname, hs))
 		goto err_local;
-	free(hs);
 
 	if (strrpl(&session->accesstoken, accesstoken))
 		goto err_local;
