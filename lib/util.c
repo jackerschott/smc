@@ -11,6 +11,7 @@
 int strrpl(char **dest, const char *src)
 {
 	if (!src) {
+		free(*dest);
 		*dest = NULL;
 		return 0;
 	}
@@ -24,7 +25,7 @@ int strrpl(char **dest, const char *src)
 	return 0;
 }
 
-int str2enum(const char *s, const char **strs, int nstrs)
+int str2enum(const char *s, char **strs, int nstrs)
 {
 	for (int i = 0; i < nstrs; ++i) {
 		if (strcmp(strs[i], s) == 0) {

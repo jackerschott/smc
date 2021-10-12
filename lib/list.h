@@ -23,12 +23,19 @@ void mtx_list_del(mtx_listentry_t *e);
 void mtx_list_replace(struct mtx_listentry_t *old, struct mtx_listentry_t *new);
 
 size_t mtx_list_length(mtx_listentry_t *head);
-void mtx_list_entry_at(mtx_listentry_t *head, size_t idx, mtx_listentry_t **entry);
+void mtx_list_entry_at(const mtx_listentry_t *head, size_t idx, mtx_listentry_t **entry);
 
 int mtx_list_empty(mtx_listentry_t *head);
 
 #define mtx_list_entry_content(ptr, type, member) \
 	CONTAINER(ptr, type, member)
+
+#define mtx_list_entry_content_at(ptr, type, member, idx, content) 		\
+	{ 									\
+		mtx_listentry_t *e; 						\
+		mtx_list_entry_at((ptr), (idx), &e); 				\
+		*(content) = mtx_list_entry_content(e, type, member); 	\
+	}
 
 #define mtx_list_free(ptr, type, member, free_entry) 					\
 	do { 										\

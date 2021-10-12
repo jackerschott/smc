@@ -20,7 +20,8 @@ int apply_event_canonalias(const mtx_event_t *event, mtx_room_t *r)
 	if (canonalias->alias && strrpl(&r->canonalias, canonalias->alias))
 		return 1;
 
-	if (canonalias->altaliases && strarr_rpl(&r->altaliases, canonalias->altaliases))
+	if (canonalias->altaliases
+			&& strarr_rpl(&r->altaliases, canonalias->altaliases))
 		return 1;
 
 	return 0;
@@ -210,11 +211,35 @@ int apply_event_encryption(const mtx_event_t *event, mtx_room_t *r)
 	return 0;
 }
 
+int apply_event_encrypted(const mtx_event_t *event, mtx_room_t *r)
+{
+	mtx_ev_encrypted_t *encrypted = event->content;
+
+	assert(0);
+	return 0;
+}
+
+int apply_event_room_key_request(const mtx_event_t *event)
+{
+	mtx_ev_room_key_request_t *request = event->content;
+
+	assert(0);
+	return 0;
+}
+
 int apply_event_history_visibility(const mtx_event_t *event, mtx_room_t *r)
 {
 	mtx_ev_history_visibility_t *histvisib = event->content;
 
 	r->histvisib = histvisib->visib;
+	return 0;
+}
+
+int apply_event_guest_access(const mtx_event_t *event, mtx_room_t *r)
+{
+	mtx_ev_guest_access_t *guestaccess = event->content;
+
+	r->guestaccess = guestaccess->access;
 	return 0;
 }
 
@@ -323,7 +348,8 @@ int apply_timeline(mtx_room_t *r, mtx_timeline_t *timeline)
 		}
 	}
 
-	mtx_event_chunk_t *lastchunk = mtx_list_entry_content(timeline->chunks.prev, mtx_event_chunk_t, entry);
+	mtx_event_chunk_t *lastchunk = mtx_list_entry_content(
+			timeline->chunks.prev, mtx_event_chunk_t, entry);
 	assert(lastchunk->type == EVENT_CHUNK_MESSAGE);
 	mtx_list_foreach(&lastchunk->events, mtx_event_t, entry, ev) {
 		if (is_message_event(ev->type)) {
@@ -397,5 +423,11 @@ int compute_room_state_from_history(mtx_room_t *r)
 		return 1;
 
 	r->dirty = 0;
+	return 0;
+}
+
+int apply_to_device_events(const mtx_listentry_t *events)
+{
+	assert(0);
 	return 0;
 }

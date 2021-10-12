@@ -20,7 +20,7 @@
 
 int strrpl(char **dest, const char *src);
 
-int str2enum(const char *s, const char **strs, int nstrs);
+int str2enum(const char *s, char **strs, int nstrs);
 
 int getrandom_(void *buf, size_t len);
 

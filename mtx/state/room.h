@@ -6,59 +6,18 @@
 #include "lib/list.h"
 #include "mtx/room.h"
 
-static const char *eventtype_strs[] = {
-	/* room events */
-	/* 	state events */
-	"m.room.canonical_alias",
-	"m.room.create",
-	"m.room.join_rules",
-	"m.room.member",
-	"m.room.power_levels",
-
-	"m.room.name",
-	"m.room.topic",
-	"m.room.avatar",
-
-	"m.room.encryption",
-
-	"m.room.history_visibility",
-
-	"m.room.server_acl",
-
-	"m.room.tombstone",
-
-	/* 	message events */
-	"m.room.redaction",
-	"m.room.message",
-};
-static const char *joinrule_strs[] = {
+static char *joinrule_strs[] = {
 	"public",
 	"knock",
 	"invite",
 	"private",
 };
-static const char *mtx_membership_strs[] = {
+static char *mtx_membership_strs[] = {
 	"invite",
 	"join",
 	"knock",
 	"leave",
 	"ban",
-};
-static const char *history_visibility_strs[] = {
-	"invited",
-	"joined",
-	"shared",
-	"world_readable",
-};
-static const char *msg_type_strs[] = {
-	"m.text",
-	"m.emote",
-	"m.notice",
-	"m.image",
-	"m.file",
-	"m.audio",
-	"m.location",
-	"m.video",
 };
 
 /* history */
@@ -84,13 +43,23 @@ void free_ev_avatar(mtx_ev_avatar_t *avatar);
 
 void free_ev_encryption(mtx_ev_encryption_t *encryption);
 
+void free_ciphertext_info(mtx_ciphertext_info_t *info);
+void free_ev_encrypted(mtx_ev_encrypted_t *encrypted);
+json_object *format_ev_encrypted(const mtx_ev_encrypted_t *encrypted);
+
+void free_ev_room_key_request(mtx_ev_room_key_request_t *request);
+json_object *format_ev_room_key_request(const mtx_ev_room_key_request_t *keyrequest);
+
 void free_ev_history_visibility(mtx_ev_history_visibility_t *visib);
+
+void free_ev_guest_access(mtx_ev_guest_access_t *guestaccess);
 
 void free_message_text(mtx_message_text_t *msg);
 void free_message_emote(mtx_message_emote_t *msg);
 void free_message_content(mtx_msg_type_t type, void *content);
-void free_ev_message(mtx_ev_message_t *msg);
 void *dup_message_content(mtx_msg_type_t type, void *content);
+void free_ev_message(mtx_ev_message_t *msg);
+json_object *format_ev_message(const mtx_ev_message_t *msg);
 
 void free_event_content(mtx_eventtype_t type, void *content);
 void free_event(mtx_event_t *event);

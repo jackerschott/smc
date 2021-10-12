@@ -5,15 +5,15 @@
 #include <olm/olm.h>
 
 #include "lib/list.h"
-
-extern const char *crypto_algorithms_msg[2];
+#include "mtx/encryption.h"
 
 typedef struct {
 	mtx_listentry_t entry;
 
 	char *id;
-	json_object *identkeys;
-	json_object *otkeys;
+	char *signkey;
+	char *identkey;
+	mtx_listentry_t otkeys;
 	char **algorithms;
 
 	char *displayname;
@@ -36,18 +36,18 @@ typedef struct {
 
 void free_device(device_t *dev);
 void free_device_list(device_list_t *devlist);
-device_t *create_device(OlmAccount *account, const char *id);
+device_t *create_own_device(OlmAccount *account, const char *id);
+int verify_device_object(json_object *obj, const char *userid,
+		const char *devid, device_t *prevdev);
+int update_device(device_t *dev, const json_object *obj);
+device_t *find_device(device_list_t *devlist, char *devid);
 
 int init_device_lists(mtx_listentry_t *devices, const mtx_listentry_t *devtrackinfos);
-
-int update_device(mtx_listentry_t *devices, char *owner, char *devid, const json_object *devinfo);
-
 int update_device_lists(mtx_listentry_t *devices, const json_object *obj);
+device_list_t *find_device_list(mtx_listentry_t *devices, char *owner);
+
 int get_device_otkey_counts(const json_object *obj, mtx_listentry_t *counts);
 
 int get_device_tracking_infos(mtx_listentry_t *devices, mtx_listentry_t *devtrackinfos);
-
-json_object *device_keys_to_export_format(const json_object *_keys, const char *devid);
-json_object *device_keys_from_export_format(json_object *_keys);
 
 #endif /* MTX_DEVICES_H */

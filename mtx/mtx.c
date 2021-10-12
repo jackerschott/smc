@@ -18,6 +18,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <stdarg.h>
 #include <string.h>
 
 #include <curl/curl.h>
@@ -28,7 +29,6 @@
 #include "mtx/devices.h"
 #include "mtx/encryption.h"
 #include "mtx/mtx.h"
-#include "mtx/signing.h"
 #include "mtx/state/parse.h"
 #include "mtx/state/apply.h"
 #include "mtx/state/room.h"
@@ -46,8 +46,11 @@ struct mtx_session_t {
 	char *userid;
 
 	device_t *device;
+	int published_devkeys;
 	mtx_listentry_t devices;
 	OlmAccount *olmaccount;
+	OlmUtility *olmutil;
+	megolm_session_t *megolmsession;
 
 	char *nextbatch;
 	mtx_listentry_t joinedrooms;
@@ -120,20 +123,24 @@ static void reset_handle(CURL *handle)
 	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, hrecv);
 	curl_easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, 0); /* for testing */
 	curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 0); /* for testing */
-	//curl_easy_setopt(handle, CURLOPT_VERBOSE, 1); /* for testing */
+	curl_easy_setopt(handle, CURLOPT_VERBOSE, 2); /* for testing */
 }
-static void get_response_error(const json_object *resp,
+static int get_response_error(json_object *resp,
 		int code, mtx_error_t *error, char *errormsg)
 {
 	int apierr;
-	json_get_object_as_enum_(resp, "errcode", &apierr, MTX_ERR_NUM, mtx_api_error_strs);
+	if (json_get_enum_(resp, "errcode", &apierr, MTX_ERR_NUM, mtx_api_error_strs))
+		return 1;
 	*error = ((mtx_error_t)apierr) + MTX_ERR_M_UNKNOWN;
 
-	json_object *obj;
-	json_object_object_get_ex(resp, "error", &obj);
+	const char *msg;
+	if (json_get_string_(resp, "error", &msg))
+		return 1;
 	strcpy(errormsg, "api error: ");
-	strcat(errormsg, json_object_get_string(obj));
+	strcat(errormsg, msg);
 	errormsg[0] = tolower(errormsg[0]);
+
+	return 0;
 }
 static int api_call(const char *hostname, const char *request, const char *target,
 		const char *urlparams, json_object *data, int *code, json_object **response)
@@ -144,7 +151,7 @@ static int api_call(const char *hostname, const char *request, const char *targe
 		curl_easy_setopt(handle, CURLOPT_CUSTOMREQUEST, request);
 
 	char url[URL_BUFSIZE];
-	strcpy(url, "https://");
+	strcpy(url, "http://");
 	strcat(url, hostname);
 	strcat(url, target);
 	if (urlparams) {
@@ -197,7 +204,10 @@ static int api_call(const char *hostname, const char *request, const char *targe
 
 	lastcode = c;
 	if (c != 200) {
-		get_response_error(resp, c, &lasterror, last_api_error_msg);
+		if (get_response_error(resp, c, &lasterror, last_api_error_msg)) {
+			lasterror = MTX_ERR_SUCCESS;
+			return 0;
+		}
 		return 1;
 	} else {
 		lasterror = MTX_ERR_SUCCESS;
@@ -226,44 +236,6 @@ static int generate_transaction_id(char *id)
 	return 0;
 }
 
-static void free_olm_account(OlmAccount *acc)
-{
-	if (!acc)
-		return;
-
-	olm_clear_account(acc);
-	free(acc);
-}
-static OlmAccount *create_olm_account(void)
-{
-	OlmAccount *acc = malloc(olm_account_size());
-	if (!acc)
-		return NULL;
-	acc = olm_account(acc);
-
-	size_t rdlen = olm_create_account_random_length(acc);
-	void *random = malloc(rdlen);
-	if (!random) {
-		free(acc);
-		return NULL;
-	}
-
-	if (getrandom_(random, rdlen)) {
-		free(random);
-		free(acc);
-		return NULL;
-	}
-
-	if (olm_create_account(acc, random, rdlen) == olm_error()) {
-		free(random);
-		free(acc);
-		return NULL;
-	}
-	free(random);
-
-	return acc;
-}
-
 int mtx_init(void)
 {
 	if (curl_global_init(CURL_GLOBAL_SSL))
@@ -282,27 +254,6 @@ void mtx_cleanup(void)
 {
 	curl_easy_cleanup(handle);
 	curl_global_cleanup();
-}
-mtx_error_t mtx_last_error(void)
-{
-	return lasterror;
-}
-char *mtx_last_error_msg(void)
-{
-	char *msg;
-	if (lasterror >= MTX_ERR_M_UNKNOWN) {
-		msg = strdup(last_api_error_msg);
-	} else if (lasterror == MTX_ERR_LOCAL) {
-		msg = strdup("local error");
-	} else if (lasterror == MTX_ERR_SUCCESS) {
-		msg = strdup("success");
-	} else {
-		assert(0);
-	}
-	if (!msg)
-		return NULL;
-	
-	return msg;
 }
 
 void mtx_free_session(mtx_session_t *session)
@@ -343,6 +294,27 @@ err_local:
 	lasterror = MTX_ERR_LOCAL;
 	return NULL;
 }
+mtx_error_t mtx_last_error(void)
+{
+	return lasterror;
+}
+char *mtx_last_error_msg(void)
+{
+	char *msg;
+	if (lasterror >= MTX_ERR_M_UNKNOWN) {
+		msg = strdup(last_api_error_msg);
+	} else if (lasterror == MTX_ERR_LOCAL) {
+		msg = strdup("local error");
+	} else if (lasterror == MTX_ERR_SUCCESS) {
+		msg = strdup("success");
+	} else {
+		assert(0);
+	}
+	if (!msg)
+		return NULL;
+	
+	return msg;
+}
 
 static const char *get_homeserver(const char *userid)
 {
@@ -351,13 +323,126 @@ static const char *get_homeserver(const char *userid)
 
 	return c + 1;
 }
-static int register_account(mtx_session_t *session, const char *hostname, const account_type_t type,
-		const char *username, const char *pass, const char *devid, const char *devname,
-		const int login)
+static void free_register_stage(mtx_register_stage_t *stage)
 {
-	assert(username);
+	if (!stage)
+		return;
 
-	// TODO: authentification data
+	free(stage->type);
+	free(stage);
+}
+static void free_register_flow(mtx_register_flow_t *flow)
+{
+	if (!flow)
+		return;
+
+	mtx_list_free(&flow->stages, mtx_register_stage_t, entry, free_register_stage);
+	free(flow);
+}
+static mtx_register_stage_t *get_register_stage(const char *type, json_object *params)
+{
+	mtx_register_stage_t *stage = malloc(sizeof(*stage));
+	if (!stage)
+		return NULL;
+	memset(stage, 0, sizeof(*stage));
+
+	if (strrpl(&stage->type, type))
+		goto err_free_stage;
+
+	json_object_object_get_ex(params, type, &stage->credentials);
+
+	return stage;
+
+err_free_stage:
+	free_register_stage(stage);
+	return NULL;
+}
+static int get_register_flows(json_object *resp, mtx_listentry_t *flows, char **sessionkey)
+{
+	mtx_list_init(flows);
+
+	json_object *_flows;
+	assert(json_object_object_get_ex(resp, "flows", &_flows));
+	assert(json_object_is_type(_flows, json_type_array));
+
+	size_t nflows = json_object_array_length(_flows);
+	for (size_t i = 0; i < nflows; ++i) {
+		json_object *_flow = json_object_array_get_idx(_flows, i);
+
+		mtx_register_flow_t *flow = malloc(sizeof(*flow));
+		if (!flow)
+			goto err_free_flows;
+		memset(flow, 0, sizeof(*flow));
+		mtx_list_init(&flow->stages);
+
+		json_object *_stages;
+		assert(json_object_object_get_ex(_flow, "stages", &_stages));
+		assert(json_object_is_type(_stages, json_type_array));
+
+		json_object *params;
+		size_t nstages = json_object_array_length(_stages);
+		for (size_t j = 0; j < nstages; ++j) {
+			json_object *_stage = json_object_array_get_idx(_stages, j);
+			assert(json_object_is_type(_stage, json_type_string));
+			const char *type = json_object_get_string(_stage);
+
+			assert(json_object_object_get_ex(resp, "params", &params));
+
+			mtx_register_stage_t *stage = get_register_stage(type, params);
+			if (!stage) {
+				free_register_flow(flow);
+				goto err_free_flows;
+			}
+			mtx_list_add(&flow->stages, &stage->entry);
+		}
+
+		mtx_list_add(flows, &flow->entry);
+	}
+
+	*sessionkey = NULL;
+	if (json_dup_string_(resp, "session", sessionkey))
+		goto err_free_flows;
+
+	return 0;
+
+err_free_flows:
+	mtx_list_free(flows, mtx_register_flow_t, entry, free_register_flow);
+	return 1;
+}
+static json_object *create_auth(mtx_register_stage_t *stage, const char *sessionkey)
+{
+	json_object *auth = json_object_new_object();
+	if (!auth)
+		return NULL;
+
+	if (json_add_string_(auth, "type", stage->type))
+		goto err_free_auth;
+
+	if (sessionkey && json_add_string_(auth, "session", sessionkey))
+		goto err_free_auth;
+
+	if (stage->credentials) {
+		json_object_object_foreach(stage->credentials, k, v) {
+			assert(json_object_is_type(v, json_type_string));
+
+			if (json_add_string_(auth, k, json_object_get_string(v)))
+				goto err_free_auth;
+		}
+	}
+
+	return auth;
+
+err_free_auth:
+	json_object_put(auth);
+	return NULL;
+}
+static int register_account(mtx_session_t *session, const char *hostname, const account_type_t type,
+		const char *username, const char *pass, char **devid, const char *devname,
+		const int login, const mtx_register_flow_t *flow, mtx_listentry_t *flows,
+		char **sessionkey)
+{
+	assert(!session->accesstoken);
+	assert(username);
 
 	json_object *data = json_object_new_object();
 	if (!data)
@@ -371,7 +456,7 @@ static int register_account(mtx_session_t *session, const char *hostname, const 
 		json_object_put(data);
 		goto err_local;
 	}
-	if (devid && json_add_string_(data, "device_id", devid)) {
+	if (*devid && json_add_string_(data, "device_id", *devid)) {
 		json_object_put(data);
 		goto err_local;
 	}
@@ -384,6 +469,17 @@ static int register_account(mtx_session_t *session, const char *hostname, const 
 		goto err_local;
 	}
 
+	if (flow) {
+		mtx_register_stage_t *stage;
+		mtx_list_entry_content_at(&flow->stages, mtx_register_stage_t, entry, 0, &stage);
+
+		json_object *auth = create_auth(stage, *sessionkey);
+		if (json_object_object_add(data, "auth", auth)) {
+			json_object_put(data);
+			goto err_local;
+		}
+	}
+
 	int code;
 	json_object *resp;
 	if (api_call(hostname, "POST", "/_matrix/client/r0/register", NULL, data, &code, &resp)) {
@@ -392,7 +488,16 @@ static int register_account(mtx_session_t *session, const char *hostname, const 
 	}
 	json_object_put(data);
 
-	if (json_get_object_as_string_(resp, "user_id", &session->userid)) {
+	if (code == 401) {
+		if (get_register_flows(resp, flows, sessionkey)) {
+			json_object_put(resp);
+			goto err_local;
+		}
+		return 0;
+	}
+	mtx_list_init(flows);
+
+	if (json_dup_string_(resp, "user_id", &session->userid)) {
 		json_object_put(resp);
 		goto err_local;
 	}
@@ -409,11 +514,12 @@ static int register_account(mtx_session_t *session, const char *hostname, const 
 
 	if (login) {
 		char *_devid = NULL;
-		if (json_get_object_as_string_(resp, "access_token", &session->accesstoken)
-				|| json_get_object_as_string_(resp, "device_id", &_devid)) {
+		if (json_dup_string_(resp, "access_token", &session->accesstoken)
+				|| json_dup_string_(resp, "device_id", &_devid)) {
 			json_object_put(resp);
 			goto err_local;
 		}
+		*devid = _devid;
 
 		OlmAccount *acc = create_olm_account();
 		if (!acc) {
@@ -423,7 +529,7 @@ static int register_account(mtx_session_t *session, const char *hostname, const 
 		free_olm_account(session->olmaccount);
 		session->olmaccount = acc;
 
-		device_t *device = create_device(session->olmaccount, _devid);
+		device_t *device = create_own_device(session->olmaccount, _devid);
 		if (!device) {
 			json_object_put(resp);
 			goto err_local;
@@ -440,16 +546,18 @@ err_local:
 	return 1;
 }
 int mtx_register_user(mtx_session_t *session, const char *hostname, const char *username,
-		const char *pass, const char *devid, const char *devname, const int login)
+		const char *pass, char **devid, const char *devname, const int login,
+		const mtx_register_flow_t *flow, mtx_listentry_t *flows, char **sessionkey)
 {
 	return register_account(session, hostname, ACCOUNT_USER,
-			username, pass, devid, devname, login);
+			username, pass, devid, devname, login, flow, flows, sessionkey);
 }
 int mtx_register_guest(mtx_session_t *session, const char *hostname, const char *username,
-		const char *pass, const char *devid, const char *devname, const int login)
+		const char *pass, char **devid, const char *devname, const int login,
+		const mtx_register_flow_t *flow, mtx_listentry_t *flows, char **sessionkey)
 {
 	return register_account(session, hostname, ACCOUNT_GUEST,
-			username, pass, devid, devname, login);
+			username, pass, devid, devname, login, flow, flows, sessionkey);
 }
 
 void mtx_free_id(mtx_id_t *id)
@@ -643,9 +751,9 @@ static int login(mtx_session_t *session, const char *hostname, const char *types
 	json_object_put(data);
 
 	char *devid = NULL;
-	if (json_get_object_as_string_(resp, "access_token", &session->accesstoken)
-			|| json_get_object_as_string_(resp, "user_id", &session->userid)
-			|| json_get_object_as_string_(resp, "device_id", &devid)) {
+	if (json_dup_string_(resp, "access_token", &session->accesstoken)
+			|| json_dup_string_(resp, "user_id", &session->userid)
+			|| json_dup_string_(resp, "device_id", &devid)) {
 		json_object_put(resp);
 		goto err_local;
 	}
@@ -663,7 +771,7 @@ static int login(mtx_session_t *session, const char *hostname, const char *types
 	free(session->olmaccount);
 	session->olmaccount = acc;
 
-	device_t *device = create_device(session->olmaccount, devid);
+	device_t *device = create_own_device(session->olmaccount, devid);
 	if (!device)
 		goto err_local;
 	free(session->device);
@@ -694,6 +802,23 @@ const char *mtx_device_id(mtx_session_t *session)
 	return session->device->id;
 }
 
+int mtx_logout(mtx_session_t *session)
+{
+	char urlparams[URL_BUFSIZE];
+	sprintf(urlparams, "access_token=%s", session->accesstoken);
+
+	int code;
+	json_object *resp;
+	if (api_call(session->hostname, "POST", "/_matrix/client/r0/logout",
+				urlparams, NULL, &code, &resp))
+		return 1;
+	json_object_put(resp); // empty
+
+	if (strrpl(&session->accesstoken, NULL))
+		return 1;
+	return 0;
+}
+
 static int query_user_id(const char *hostname, const char *accesstoken, char **userid)
 {
 	char urlparams[URL_BUFSIZE];
@@ -707,7 +832,7 @@ static int query_user_id(const char *hostname, const char *accesstoken, char **u
 		return 1;
 
 	*userid = NULL;
-	if (json_get_object_as_string_(resp, "user_id", userid)) {
+	if (json_dup_string_(resp, "user_id", userid)) {
 		json_object_put(resp);
 		goto err_local;
 	}
@@ -745,7 +870,7 @@ int mtx_recall_past_session(mtx_session_t *session, const char *hostname,
 		goto err_local;
 	session->olmaccount = acc;
 
-	device_t *device = create_device(session->olmaccount, devid);
+	device_t *device = create_own_device(session->olmaccount, devid);
 	if (!device)
 		goto err_local;
 	session->device = device;
@@ -757,52 +882,60 @@ err_local:
 	return 1;
 }
 
-static int upload_keys(const mtx_session_t *session)
+static int upload_keys(mtx_session_t *session)
 {
 	json_object *data = json_object_new_object();
 	if (!data)
 		goto err_local;
 
-	json_object *devkeys = json_object_new_object();
-	if (!devkeys)
-		goto err_free_data;
-	if (json_object_object_add(data, "device_keys", devkeys)) {
-		json_object_put(devkeys);
-		goto err_free_data;
+	/* device keys */
+	if (!session->published_devkeys) {
+		json_object *devkeys = json_object_new_object();
+		if (!devkeys)
+			goto err_free_data;
+		if (!json_object_object_add(data, "device_keys", devkeys)) {
+			json_object_put(devkeys);
+			goto err_free_data;
+		}
+		if (json_add_string_(devkeys, "user_id", session->userid)
+				|| json_add_string_(devkeys, "device_id", session->device->id)
+				|| json_add_string_array_(devkeys, "algorithms", mtx_crypt_algorithm_strs)) {
+			goto err_free_data;
+		}
+
+		json_object *keys = device_keys_format(session->device->signkey,
+				session->device->identkey, session->device->id);
+		if (!keys)
+			goto err_free_data;
+
+		if (!json_object_object_add(devkeys, "keys", keys)) {
+			json_object_put(keys);
+			goto err_free_data;
+		}
+
+		if (sign_json(session->olmaccount, devkeys, session->userid, session->device->id))
+			goto err_free_data;
+
+		session->published_devkeys = 1;
 	}
-	if (json_add_string_(devkeys, "user_id", session->userid)
-			|| json_add_string_(devkeys, "device_id", session->device->id)
-			|| json_add_string_array_(devkeys, "algorithms",
-					ARRNUM(crypto_algorithms_msg), crypto_algorithms_msg)) {
-		goto err_free_data;
-	}
-
-	json_object *keys = device_keys_to_export_format(
-			session->device->identkeys, session->device->id);
-	if (!keys)
-		goto err_free_data;
-
-	if (json_object_object_add(devkeys, "keys", keys)) {
-		json_object_put(keys);
-		goto err_free_data;
-	}
-
-
-	if (sign_json(session->olmaccount, devkeys, session->userid, session->device->id))
-		goto err_free_data;
 
 	/* one time keys */
-	json_object *otkeys = json_object_new_object();
-	if (!otkeys)
-		goto err_free_data;
-
-	if (json_object_object_add(data, "one_time_keys", otkeys)) {
+	json_object *otkeys;
+	if (json_add_object_(data, "one_time_keys", &otkeys)) {
 		json_object_put(otkeys);
 		goto err_free_data;
 	}
 
-	// TODO: implement rest of one time keys
+	mtx_list_foreach(&session->device->otkeys, one_time_key_t, entry, otkey) {
+		json_object *key;
+		char *keyidentif;
+		if (one_time_key_format(session->olmaccount, session->userid,
+				session->device->id, otkey, &keyidentif, &key))
+			goto err_free_data;
 
+		if (json_object_object_add(data, keyidentif, key))
+			goto err_free_data;
+	}
 
 	char urlparams[URL_BUFSIZE];
 	strcpy(urlparams, "access_token=");
@@ -816,8 +949,6 @@ static int upload_keys(const mtx_session_t *session)
 		return 1;
 	}
 	json_object_put(data);
-
-	printf("%s\n", json_object_to_json_string_ext(resp, JSON_C_TO_STRING_PRETTY));
 
 	json_object_put(resp);
 	return 0;
@@ -834,7 +965,7 @@ static int query_keys(mtx_session_t *session, const char *sincetoken, int timeou
 	if (!data)
 		goto err_local;
 
-	if (json_add_int_(data, "timeout", timeout)) {
+	if (timeout != -1 && json_add_int_(data, "timeout", timeout)) {
 		json_object_put(data);
 		goto err_local;
 	}
@@ -903,8 +1034,30 @@ static int query_keys(mtx_session_t *session, const char *sincetoken, int timeou
 	}
 
 	json_object_object_foreach(rdevkeys, userid, devinfos) {
+		device_list_t *devlist = find_device_list(&session->devices, userid);
+		assert(devlist);
+
 		json_object_object_foreach(devinfos, devid, devinfo) {
-			if (update_device(&session->devices, userid, devid, devinfo)) {
+			device_t *dev = find_device(devlist, devid);
+
+			int err = verify_device_object(devinfo, userid, devid, dev);
+			if (err == -1) {
+				goto err_local;
+			} else if (err) {
+				continue;
+			}
+
+			if (!dev) {
+				device_t *_dev = malloc(sizeof(*dev));
+				if (!_dev)
+					goto err_local;
+				memset(_dev, 0, sizeof(*_dev));
+
+				dev = _dev;
+				mtx_list_add(&devlist->devices, &dev->entry);
+			}
+
+			if (update_device(dev, devinfo)) {
 				json_object_put(resp);
 				goto err_local;
 			}
@@ -956,6 +1109,83 @@ static int query_key_changes(mtx_session_t *session, const char *from, const cha
 err_local:
 	lasterror = MTX_ERR_LOCAL;
 	return 0;
+}
+static int claim_one_time_keys(mtx_session_t *session, int timeout, json_object *keys)
+{
+	json_object *data = json_object_new_object();
+	if (!data)
+		goto err_local;
+
+	if (timeout != -1 && json_add_int_(data, "timeout", timeout))
+		goto err_free_data;
+
+	json_object *_keys = NULL;
+	if (json_object_deep_copy(keys, &_keys, NULL))
+		goto err_free_data;
+
+	if (json_object_object_add(data, "one_time_keys", _keys)) {
+		json_object_put(_keys);
+		goto err_free_data;
+	}
+
+	char urlparams[URL_BUFSIZE];
+	strcpy(urlparams, "access_token=");
+	strcat(urlparams, session->accesstoken);
+
+	int code;
+	json_object *resp;
+	if (api_call(session->hostname, "POST", "/_matrix/client/r0/keys/claim",
+				urlparams, data, &code, &resp)) {
+		json_object_put(data);
+		return 1;
+	}
+	json_object_put(data);
+
+	// TODO: handle failures
+
+	json_object *otkeys;
+	if (!json_object_object_get_ex(resp, "one_time_keys", &otkeys)) {
+		json_object_put(resp);
+		goto err_local;
+	}
+
+	json_object_object_foreach(otkeys, userid, v1) {
+		device_list_t *devlist = find_device_list(&session->devices, userid);
+		assert(devlist);
+
+		json_object_object_foreach(v1, devid, v2) {
+			device_t *dev = find_device(devlist, devid);
+			assert(dev);
+
+			json_object_object_foreach(v2, keyidentif, key) {
+				int err = verify_one_time_key_object(keyidentif, key,
+						userid, dev->id, dev->identkey);
+				if (err == -1) {
+					json_object_put(resp);
+					goto err_local;
+				} else if (err) {
+					continue;
+				}
+
+				one_time_key_t *otkey = parse_one_time_key(keyidentif, key);
+				if (!otkey) {
+					json_object_put(resp);
+					goto err_local;
+				}
+
+				mtx_list_add(&dev->otkeys, &otkey->entry);
+			}
+		}
+	}
+
+	json_object_put(resp);
+	return 0;
+
+err_free_data:
+	json_object_put(data);
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
 }
 int mtx_exchange_keys(mtx_session_t *session, const mtx_listentry_t *devtrackinfos,
 		const char *sincetoken, int timeout)
@@ -1022,7 +1252,7 @@ int mtx_apply_sync(mtx_session_t *session, mtx_sync_response_t *response)
 	json_object *resp = response->resp;
 
 	char *nextbatch = NULL;
-	if (json_get_object_as_string_(resp, "next_batch", &nextbatch))
+	if (json_dup_string_(resp, "next_batch", &nextbatch))
 		goto err_local;
 	if (strrpl(&session->nextbatch, nextbatch))
 		goto err_local;
@@ -1034,6 +1264,16 @@ int mtx_apply_sync(mtx_session_t *session, mtx_sync_response_t *response)
 					&session->invitedrooms, &session->leftrooms)) {
 			goto err_local;
 		}
+	}
+
+	json_object *todevice;
+	if (json_object_object_get_ex(resp, "to_device", &todevice)) {
+		mtx_listentry_t events;
+		if (get_to_device(todevice, &events))
+			goto err_local;
+
+		if (apply_to_device_events(&events))
+			goto err_local;
 	}
 
 	json_object *devlists;
@@ -1132,39 +1372,301 @@ int mtx_sync_keys(mtx_session_t *session, int timeout)
 	return 0;
 }
 
-static void print_device(device_t *dev)
+static int send_to_device_event(const mtx_session_t *session,
+		const char *evtype, json_object *messages)
 {
-	printf("id: %s\n", dev->id);
+	json_object *data = json_object_new_object();
+	if (!data)
+		goto err_local;
 
-	if (dev->identkeys) {
-		printf("identkeys:\n");
-		printf("%s\n", json_object_to_json_string_ext(dev->identkeys,
-					JSON_C_TO_STRING_PRETTY));
+	json_object *_messages = NULL;
+	if (json_object_deep_copy(messages, &_messages, NULL)) {
+		json_object_put(data);
+		goto err_local;
 	}
 
-	if (dev->otkeys) {
-		printf("otkeys:\n");
-		printf("%s\n", json_object_to_json_string_ext(dev->otkeys,
-					JSON_C_TO_STRING_PRETTY));
+	if (json_add_object_(data, "messages", &_messages)) {
+		json_object_put(_messages);
+		json_object_put(data);
+		goto err_local;
 	}
 
-	if (dev->algorithms) {
-		printf("algorithms:\n");
-		for (size_t i = 0; dev->algorithms[i]; ++i) {
-			printf("\t%s", dev->algorithms[i]);
-		}
+	char urlparams[URL_BUFSIZE];
+	strcpy(urlparams, "access_token");
+	strcat(urlparams, session->accesstoken);
+
+	char txnid[TRANSACTION_ID_SIZE];
+	if (generate_transaction_id(txnid)) {
+		goto err_local;
 	}
 
-	if (dev->displayname)
-		printf("displayname: %s\n", dev->displayname);
+	char target[URL_BUFSIZE];
+	sprintf(target, "/_matrix/client/r0/sendToDevice/%s/%s", evtype, txnid);
+
+	int code;
+	json_object *resp;
+	if (api_call(session->hostname, "PUT", target, urlparams, data, &code, &resp)) {
+		return 1;
+	}
+
+	json_object_put(resp);
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
 }
-void mtx_print_devices(mtx_session_t *session)
+int mtx_send_key_request(mtx_session_t *session, char **userids, mtx_ev_room_key_request_t *request)
 {
-	printf("------- device -------\n");
-	print_device(session->device);
+	json_object *messages = json_object_new_object();
+	if (!messages)
+		goto err_local;
 
-	printf("------- other devices -------\n");
-	mtx_list_foreach(&session->devices, device_t, entry, dev) {
-		print_device(dev);
+	json_object *event = format_ev_room_key_request(request);
+	if (!event)
+		goto err_free_messages;
+
+	for (size_t i = 0; userids[i]; ++i) {
+		json_object *msgs;
+		if (json_add_object_(messages, userids[i], &msgs))
+			goto err_free_messages;
+
+		if (json_add_object_(msgs, "*", &event))
+			goto err_free_messages;
 	}
+
+	if (send_to_device_event(session, "m.room_key_request", messages))
+		return 1;
+
+	return 0;
+
+err_free_messages:
+	json_object_put(messages);
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
+}
+
+static int send_message_event(const mtx_session_t *session, const char *roomid,
+		const char *evtype, json_object *event, char **eventid)
+{
+	char urlparams[URL_BUFSIZE];
+	strcpy(urlparams, "access_token");
+	strcat(urlparams, session->accesstoken);
+
+	char txnid[TRANSACTION_ID_SIZE];
+	if (generate_transaction_id(txnid))
+		goto err_local;
+
+	char target[URL_BUFSIZE];
+	sprintf("/_matrix/client/r0/rooms/%s/send/%s/%s", roomid, evtype, txnid);
+
+	int code;
+	json_object *resp;
+	if (api_call(session->hostname, "PUT", target, urlparams, event, &code, &resp))
+		return 1;
+
+	if (json_dup_string_(resp, "event_id", eventid))
+		goto err_local;
+
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
+}
+int mtx_send_message(mtx_session_t *session, const mtx_room_t *room,
+		const mtx_ev_message_t *msg)
+{
+	assert(session->accesstoken);
+
+	json_object *ev = format_ev_message(msg);
+	if (!ev)
+		goto err_local;
+
+	char *eventid;
+	//if (room->crypt.enabled) {
+	//	if (!session->megolmsession) {
+	//		megolm_session_t *ms = create_outbound_megolm_session(
+	//				room->crypt.rotperiod, room->crypt.rotmsgnum);
+	//		if (!ms)
+	//			goto err_local;
+	//		session->megolmsession = ms;
+	//	}
+
+	//	if (update_megolm_session(&session->megolmsession))
+	//		goto err_local;
+
+	//	json_object *content = ev;
+	//	ev = encrypt_event_megolm(session->megolmsession, session->device,
+	//			room->id, "m.room.message", content);
+	//	json_object_put(content);
+	//}
+
+	if (send_message_event(session, room->id, "m.room.message", ev, &eventid))
+		return 1;
+	json_object_put(ev);
+
+	free(eventid); /* probably useless */
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
+}
+
+static json_object *format_room_creation_info(const mtx_room_creation_info_t *createinfo)
+{
+	json_object *obj = json_object_new_object();
+	if (!obj)
+		return NULL;
+
+	if (createinfo->visib != MTX_ROOM_VISIBILITY_NUM
+			&& json_add_enum_(obj, "visibility",
+				createinfo->visib, mtx_room_visibility_strs))
+		goto err_free_obj;
+
+	if (createinfo->alias && json_add_string_(obj, "room_alias_name", createinfo->alias))
+		goto err_free_obj;
+
+	if (createinfo->name && json_add_string_(obj, "name", createinfo->name))
+		goto err_free_obj;
+
+	if (createinfo->topic && json_add_string_(obj, "topic", createinfo->topic))
+		goto err_free_obj;
+
+	if (createinfo->invites && json_add_string_array_(obj, "invite", createinfo->invites))
+		goto err_free_obj;
+
+	// TODO: invite_3pid
+	
+	if (createinfo->version && json_add_string_(obj, "room_version", createinfo->version))
+		goto err_free_obj;
+
+	// TODO: creation_content
+
+	// TODO: initial_state
+
+	if (createinfo->preset != MTX_ROOM_PRESET_NUM &&
+			json_add_enum_(obj, "preset", createinfo->preset, mtx_room_preset_strs))
+		goto err_free_obj;
+
+	if (createinfo->isdirect != -1 && json_add_bool_(obj, "is_direct", createinfo->isdirect))
+		goto err_free_obj;
+
+	// TODO: power_level_content_override
+
+	return obj;
+
+err_free_obj:
+	json_object_put(obj);
+	return NULL;
+}
+int mtx_create_room(const mtx_session_t *session,
+		mtx_room_creation_info_t *createinfo, char **roomid)
+{
+	json_object *data = format_room_creation_info(createinfo);
+	if (!data)
+		goto err_local;
+
+	char urlparams[URL_BUFSIZE];
+	strcpy(urlparams, "access_token=");
+	strcat(urlparams, session->accesstoken);
+
+	int code;
+	json_object *resp;
+	if (api_call(session->hostname, "POST", "/_matrix/client/r0/createRoom",
+				urlparams, data, &code, &resp)) {
+		json_object_put(data);
+		return 1;
+	}
+	json_object_put(data);
+
+	*roomid = NULL;
+	if (json_dup_string_(resp, "room_id", roomid)) {
+		json_object_put(resp);
+		goto err_local;
+	}
+
+	json_object_put(resp);
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
+}
+int mtx_create_room_from_preset(const mtx_session_t *session,
+		mtx_room_preset_t preset, char **roominfo)
+{
+	mtx_room_creation_info_t createinfo;
+	memset(&createinfo, 0, sizeof(createinfo));
+	createinfo.preset = preset;
+	createinfo.visib = MTX_ROOM_VISIBILITY_NUM;
+	createinfo.isdirect = -1;
+
+	return mtx_create_room(session, &createinfo, roominfo);
+}
+
+int mtx_invite(const mtx_session_t *session, const char *roomid, const char *userid)
+{
+	json_object *data = json_object_new_object();
+	if (!data)
+		goto err_local;
+
+	if (json_add_string_(data, "user_id", userid)) {
+		json_object_put(data);
+		goto err_local;
+	}
+
+	char urlparams[URL_BUFSIZE];
+	sprintf(urlparams, "access_token=%s", session->accesstoken);
+
+	char target[URL_BUFSIZE];
+	char *_roomid = curl_easy_escape(handle, roomid, strlen(roomid));
+	sprintf(target, "/_matrix/client/r0/rooms/%s/invite", _roomid);
+	free(_roomid);
+
+	int code;
+	json_object *resp;
+	if (api_call(session->hostname, "POST", target, urlparams, data, &code, &resp)) {
+		json_object_put(data);
+		return 1;
+	}
+	json_object_put(data);
+
+	json_object_put(resp); // resp is empty
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
+}
+int mtx_join(const mtx_session_t *session, const char *roomid)
+{
+	json_object *data = json_object_new_object();
+	if (!data)
+		goto err_local;
+
+	// TODO: third_party_signed
+
+	char urlparams[URL_BUFSIZE];
+	sprintf(urlparams, "access_token=%s", session->accesstoken);
+
+	char target[URL_BUFSIZE];
+	sprintf(target, "/_matrix/client/r0/rooms/%s/join", roomid);
+
+	int code;
+	json_object *resp;
+	if (api_call(session->hostname, "POST", target, urlparams, data, &code, &resp)) {
+		json_object_put(data);
+		return 1;
+	}
+	json_object_put(data);
+
+	json_object_put(resp); // resp contains unneeded roomid
+	return 0;
+
+err_local:
+	lasterror = MTX_ERR_LOCAL;
+	return 1;
 }

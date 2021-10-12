@@ -4,36 +4,53 @@
 #include "lib/array.h"
 #include "lib/hjson.h"
 
-int json_get_object_as_int_(const json_object *obj, const char *key, int32_t *i)
-{
-	json_object *tmp;
-	if (!json_object_object_get_ex(obj, key, &tmp))
-		return 1;
-	*i = json_object_get_int(tmp);
-	return 0;
-}
-int json_get_object_as_int64_(const json_object *obj, const char *key, int64_t *i)
-{
-	json_object *tmp;
-	if (!json_object_object_get_ex(obj, key, &tmp))
-		return 1;
-	*i = json_object_get_int64(tmp);
-	return 0;
-}
-int json_get_object_as_uint64_(const json_object *obj, const char *key, uint64_t *i)
-{
-	json_object *tmp;
-	if (!json_object_object_get_ex(obj, key, &tmp))
-		return 1;
-	*i = json_object_get_uint64(tmp);
-	return 0;
-}
-int json_get_object_as_string_(const json_object *obj, const char *key, char **str)
+int json_get_int_(const json_object *obj, const char *key, int32_t *i)
 {
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
 		return 1;
 
+	assert(json_object_is_type(tmp, json_type_int));
+	*i = json_object_get_int(tmp);
+	return 0;
+}
+int json_get_int64_(const json_object *obj, const char *key, int64_t *i)
+{
+	json_object *tmp;
+	if (!json_object_object_get_ex(obj, key, &tmp))
+		return 1;
+
+	assert(json_object_is_type(tmp, json_type_int));
+	*i = json_object_get_int64(tmp);
+	return 0;
+}
+int json_get_uint64_(const json_object *obj, const char *key, uint64_t *i)
+{
+	json_object *tmp;
+	if (!json_object_object_get_ex(obj, key, &tmp))
+		return 1;
+
+	assert(json_object_is_type(tmp, json_type_int));
+	*i = json_object_get_uint64(tmp);
+	return 0;
+}
+int json_get_string_(const json_object *obj, const char *key, const char **str)
+{
+	json_object *tmp;
+	if (!json_object_object_get_ex(obj, key, &tmp))
+		return 1;
+	assert(json_object_is_type(tmp, json_type_string));
+
+	*str = json_object_get_string(tmp);
+	return 0;
+}
+int json_dup_string_(const json_object *obj, const char *key, char **str)
+{
+	json_object *tmp;
+	if (!json_object_object_get_ex(obj, key, &tmp))
+		return 1;
+
+	assert(json_object_is_type(tmp, json_type_string));
 	const char *_s = json_object_get_string(tmp);
 	if (!_s) {
 		*str = NULL;
@@ -47,28 +64,31 @@ int json_get_object_as_string_(const json_object *obj, const char *key, char **s
 	*str = s;
 	return 0;
 }
-int json_get_object_as_bool_(const json_object *obj, const char *key, int *b)
-{
-	json_object *tmp;
-	if (!json_object_object_get_ex(obj, key, &tmp))
-		return 1;
-	*b = (int)json_object_get_boolean(tmp);
-	return 0;
-}
-int json_get_object_as_enum_(const json_object *obj, const char *key,
-		int *e, int n, const char **strs)
+int json_get_bool_(const json_object *obj, const char *key, int *b)
 {
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
 		return 1;
 
+	assert(json_object_is_type(tmp, json_type_boolean));
+	*b = (int)json_object_get_boolean(tmp);
+	return 0;
+}
+int json_get_enum_(const json_object *obj, const char *key,
+		int *e, int n, char **strs)
+{
+	json_object *tmp;
+	if (!json_object_object_get_ex(obj, key, &tmp))
+		return 1;
+
+	assert(json_object_is_type(tmp, json_type_string));
 	const char *s = json_object_get_string(tmp);
 	assert(s);
 
 	*e = str2enum(s, strs, n);
 	return 0;
 }
-int json_get_object_as_string_array_(const json_object *obj, const char *key, char ***_strs)
+int json_dup_string_array_(const json_object *obj, const char *key, char ***_strs)
 {
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
@@ -83,6 +103,8 @@ int json_get_object_as_string_array_(const json_object *obj, const char *key, ch
 
 	for (size_t i = 0; i < n; ++i) {
 		json_object *element = json_object_array_get_idx(obj, i);
+		assert(json_object_is_type(element, json_type_string));
+
 		char *s = strdup(json_object_get_string(element));
 		if (!s)
 			goto memerr_free_array;
@@ -99,7 +121,7 @@ memerr_free_array:
 	}
 	return -1;
 }
-int json_get_object_as_object_(const json_object *obj, const char *key, json_object **o)
+int json_dup_object_(const json_object *obj, const char *key, json_object **o)
 {
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
@@ -150,7 +172,7 @@ int json_add_bool_(json_object *obj, const char *key, int b)
 	
 	return 0;
 }
-int json_add_enum_(json_object *obj, const char *key, int e, const char **strs)
+int json_add_enum_(json_object *obj, const char *key, int e, char **strs)
 {
 	if (!strs)
 		return 1;
@@ -164,16 +186,16 @@ int json_add_enum_(json_object *obj, const char *key, int e, const char **strs)
 
 	return 0;
 }
-int json_add_string_array_(json_object *obj, const char *key, int n, const char **str)
+int json_add_string_array_(json_object *obj, const char *key, char **str)
 {
 	if (!str)
 		return 1;
 
-	json_object *array = json_object_new_array_ext(n);
+	json_object *array = json_object_new_array_ext(strarr_num(str));
 	if (!array)
 		return 1;
 
-	for (int i = 0; i < n; ++i) {
+	for (int i = 0; str[i]; ++i) {
 		json_object *strobj = json_object_new_string(str[i]);
 		if (!strobj)
 			return 1;

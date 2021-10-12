@@ -71,7 +71,7 @@ size_t mtx_list_length(mtx_listentry_t *head)
 	}
 	return l;
 }
-void mtx_list_entry_at(mtx_listentry_t *head, size_t idx, mtx_listentry_t **entry)
+void mtx_list_entry_at(const mtx_listentry_t *head, size_t idx, mtx_listentry_t **entry)
 {
 	size_t i = 0;
 	mtx_listentry_t *e = head->next;

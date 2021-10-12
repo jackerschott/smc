@@ -4,6 +4,7 @@
 #include <json-c/json.h>
 
 #include "lib/array.h"
+#include "lib/hjson.h"
 #include "mtx/state/room.h"
 
 mtx_event_t *dup_event(mtx_event_t *event);
@@ -429,8 +430,155 @@ err_free_encryption:
 	return NULL;
 }
 
+int format_ciphertext_info(json_object *obj, const mtx_ciphertext_info_t *info)
+{
+	if (json_add_string_(obj, "body", info->body))
+		return 1;
+
+	if (json_add_int_(obj, "type", info->type))
+		return 1;
+
+	return 0;
+}
+
+void free_ciphertext_info(mtx_ciphertext_info_t *info)
+{
+	if (!info)
+		return;
+
+	free(info->identkey);
+	free(info->body);
+	free(info);
+}
+void free_ev_encrypted(mtx_ev_encrypted_t *encrypted)
+{
+	if (!encrypted)
+		return;
+
+	const char *algolm = mtx_crypt_algorithm_strs[MTX_CRYPT_ALGORITHM_OLM];
+	const char *algmegolm = mtx_crypt_algorithm_strs[MTX_CRYPT_ALGORITHM_MEGOLM];
+	if (strcmp(encrypted->algorithm, algolm) == 0) {
+		mtx_list_free(&encrypted->olm.ciphertext,
+				mtx_ciphertext_info_t, entry, free_ciphertext_info);
+	} else if (strcmp(encrypted->algorithm, algmegolm) == 0) {
+		free(encrypted->megolm.ciphertext);
+		free(encrypted->megolm.deviceid);
+		free(encrypted->megolm.sessionid);
+	} else {
+		assert(0);
+	}
+
+	free(encrypted->senderkey);
+	free(encrypted->algorithm);
+	free(encrypted);
+}
+mtx_ev_encrypted_t *dup_ev_encrypted(mtx_ev_encrypted_t *encrypted)
+{
+	assert(0);
+}
+json_object *format_ev_encrypted(const mtx_ev_encrypted_t *encrypted)
+{
+	json_object *obj = json_object_new_object();
+	if (!obj)
+		return NULL;
+
+	if (json_add_string_(obj, "algorithm", encrypted->algorithm))
+		goto err_free_obj;
+
+	if (json_add_string_(obj, "sender_key", encrypted->senderkey))
+		goto err_free_obj;
+
+	const char *algolm = mtx_crypt_algorithm_strs[MTX_CRYPT_ALGORITHM_OLM];
+	const char *algmegolm = mtx_crypt_algorithm_strs[MTX_CRYPT_ALGORITHM_MEGOLM];
+	if (strcmp(encrypted->algorithm, algolm) == 0) {
+		json_object *ciphertext;
+		if (json_add_object_(obj, "ciphertext", &ciphertext))
+			goto err_free_obj;
+
+		mtx_list_foreach(&encrypted->olm.ciphertext, mtx_ciphertext_info_t, entry, info) {
+			json_object *_info;
+			if (json_add_object_(obj, info->identkey, &_info))
+				goto err_free_obj;
+
+			if (format_ciphertext_info(_info, info))
+				goto err_free_obj;
+		}
+	} else if (strcmp(encrypted->algorithm, algmegolm) == 0) {
+		if (json_add_string_(obj, "ciphertext", encrypted->megolm.ciphertext))
+			goto err_free_obj;
+
+		if (json_add_string_(obj, "device_id", encrypted->megolm.deviceid))
+			goto err_free_obj;
+
+		if (json_add_string_(obj, "session_id", encrypted->megolm.sessionid))
+			goto err_free_obj;
+	} else {
+		assert(0);
+	}
+
+	return obj;
+
+err_free_obj:
+	json_object_put(obj);
+	return obj;
+}
+
+void free_ev_room_key_request(mtx_ev_room_key_request_t *request)
+{
+	if (!request)
+		return;
+
+	free(request->body.algorithm);
+	free(request->body.roomid);
+	free(request->body.senderkey);
+	free(request->body.sessionid);
+	free(request->deviceid);
+	free(request->requestid);
+	free(request);
+}
+json_object *format_ev_room_key_request(const mtx_ev_room_key_request_t *keyrequest)
+{
+	json_object *obj = json_object_new_object();
+	if (!obj)
+		return NULL;
+
+	json_object *body;
+	if (json_add_object_(obj, "body", &body))
+		goto err_free_obj;
+
+	if (json_add_string_(body, "algorithm", keyrequest->body.algorithm))
+		goto err_free_obj;
+
+	if (json_add_string_(body, "room_id", keyrequest->body.algorithm))
+		goto err_free_obj;
+
+	if (json_add_string_(body, "sender_key", keyrequest->body.algorithm))
+		goto err_free_obj;
+
+	if (json_add_string_(body, "session_id", keyrequest->body.algorithm))
+		goto err_free_obj;
+
+	if (json_add_enum_(obj, "action", keyrequest->action, mtx_key_request_action_strs))
+		goto err_free_obj;
+
+	if (json_add_string_(obj, "requesting_device_id", keyrequest->deviceid))
+		goto err_free_obj;
+
+	if (json_add_string_(obj, "request_id", keyrequest->requestid))
+		goto err_free_obj;
+
+	return obj;
+
+err_free_obj:
+	json_object_put(obj);
+	return NULL;
+}
+
 void free_ev_history_visibility(mtx_ev_history_visibility_t *visib)
 {
+	if (!visib)
+		return;
+
 	free(visib);
 }
 mtx_ev_history_visibility_t *dup_ev_history_visibility(mtx_ev_history_visibility_t *visib)
@@ -445,6 +593,27 @@ mtx_ev_history_visibility_t *dup_ev_history_visibility(mtx_ev_history_visibility
 	v->visib = visib->visib;
 
 	return v;
+}
+
+void free_ev_guest_access(mtx_ev_guest_access_t *guestaccess)
+{
+	if (!guestaccess)
+		return;
+
+	free(guestaccess);
+}
+mtx_ev_guest_access_t *dup_ev_guest_access(mtx_ev_guest_access_t *guestaccess)
+{
+	assert(guestaccess);
+	
+	mtx_ev_guest_access_t *ga = malloc(sizeof(*ga));
+	if (!ga)
+		return NULL;
+	memset(ga, 0, sizeof(*ga));
+
+	ga->access = guestaccess->access;
+
+	return ga;
 }
 
 void free_message_text(mtx_message_text_t *msg)
@@ -478,6 +647,17 @@ err_free_msg:
 	free_message_text(m);
 	return NULL;
 }
+int format_message_text(json_object *obj, const mtx_message_text_t *m)
+{
+	if (json_add_string_(obj, "format", m->fmt))
+		return 1;
+
+	if (json_add_string_(obj, "formatted_body", m->fmtbody))
+		return 1;
+
+	return 0;
+}
+
 void free_message_emote(mtx_message_emote_t *msg)
 {
 	if (!msg)
@@ -510,16 +690,27 @@ err_free_msg:
 	return NULL;
 
 }
+int format_message_emote(json_object *obj, const mtx_message_emote_t *m)
+{
+	if (json_add_string_(obj, "format", m->fmt))
+		return 1;
+
+	if (json_add_string_(obj, "formatted_body", m->fmtbody))
+		return 1;
+
+	return 0;
+}
+
 void free_message_content(mtx_msg_type_t type, void *content)
 {
 	if (!content)
 		return;
 
 	switch (type) {
-	case MSG_TEXT:
+	case MTX_MSG_TEXT:
 		free_message_text(content);
 		break;
-	case MSG_EMOTE:
+	case MTX_MSG_EMOTE:
 		free_message_emote(content);
 		break;
 	default:
@@ -532,10 +723,10 @@ void *dup_message_content(mtx_msg_type_t type, void *content)
 
 	void *c;
 	switch (type) {
-	case MSG_TEXT:
+	case MTX_MSG_TEXT:
 		c = dup_message_text(content);
 		break;
-	case MSG_EMOTE:
+	case MTX_MSG_EMOTE:
 		c = dup_message_emote(content);
 		break;
 	default:
@@ -546,6 +737,27 @@ void *dup_message_content(mtx_msg_type_t type, void *content)
 
 	return c;
 }
+int format_message_content(mtx_msg_type_t type, json_object *obj, const void *content)
+{
+	assert(content);
+
+	int err;
+	switch (type) {
+	case MTX_MSG_TEXT:
+		err = format_message_text(obj, content);
+		break;
+	case MTX_MSG_EMOTE:
+		err = format_message_emote(obj, content);
+		break;
+	default:
+		assert(0);
+	}
+	if (err)
+		return 1;
+
+	return 0;
+}
+
 void free_ev_message(mtx_ev_message_t *msg)
 {
 	if (!msg)
@@ -582,6 +794,24 @@ err_free_message:
 	free_ev_message(m);
 	return NULL;
 }
+json_object *format_ev_message(const mtx_ev_message_t *msg)
+{
+	json_object *obj = json_object_new_object();
+	if (!obj)
+		return NULL;
+
+	if (json_add_string_(obj, "msgtype", mtx_msg_type_strs[msg->type]))
+		goto err_free_obj;
+
+	if (json_add_string_(obj, "body", msg->body))
+		goto err_free_obj;
+
+	return obj;
+
+err_free_obj:
+	json_object_put(obj);
+	return NULL;
+}
 
 void free_event_content(mtx_eventtype_t type, void *content)
 {
@@ -615,6 +845,9 @@ void free_event_content(mtx_eventtype_t type, void *content)
 		break;
 	case EVENT_HISTORY_VISIBILITY:
 		free_ev_history_visibility(content);
+		break;
+	case EVENT_GUEST_ACCESS:
+		free_ev_guest_access(content);
 		break;
 	case EVENT_REDACTION:
 		free_ev_redaction(content);
@@ -690,6 +923,8 @@ void *dup_event_content(mtx_eventtype_t type, void *content)
 	case EVENT_HISTORY_VISIBILITY:
 		c = dup_ev_history_visibility(content);
 		break;
+	case EVENT_GUEST_ACCESS:
+		c = dup_ev_guest_access(content);
 	case EVENT_REDACTION:
 		c = dup_ev_redaction(content);
 		break;

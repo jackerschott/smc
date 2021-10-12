@@ -10,7 +10,7 @@
 */
 typedef enum {
 	/* room events */
-	/* 	state events */
+	/* state events */
 	EVENT_CANONALIAS,
 	EVENT_CREATE,
 	EVENT_JOINRULES,
@@ -23,19 +23,50 @@ typedef enum {
 
 	EVENT_ENCRYPTION,
 
+	EVENT_GUEST_ACCESS,
+
 	EVENT_HISTORY_VISIBILITY,
 
 	EVENT_SERVER_ACL,
 
 	EVENT_TOMBSTONE,
 
-	/* 	message events */
+	/* message events */
 	EVENT_REDACTION,
 
 	EVENT_MESSAGE,
 
+	/* to device events */
+
 	EVENT_NUM,
 } mtx_eventtype_t;
+static char *eventtype_strs[] = {
+	/* room events */
+	/* 	state events */
+	"m.room.canonical_alias",
+	"m.room.create",
+	"m.room.join_rules",
+	"m.room.member",
+	"m.room.power_levels",
+
+	"m.room.name",
+	"m.room.topic",
+	"m.room.avatar",
+
+	"m.room.encryption",
+
+	"m.room.history_visibility",
+
+	"m.room.guest_access",
+
+	"m.room.server_acl",
+
+	"m.room.tombstone",
+
+	/* 	message events */
+	"m.room.redaction",
+	"m.room.message",
+};
 
 /* base events */
 typedef struct {
@@ -148,6 +179,71 @@ typedef struct {
 	unsigned long rotmsgnum;
 } mtx_ev_encryption_t;
 
+typedef enum {
+	MTX_CRYPT_ALGORITHM_OLM,
+	MTX_CRYPT_ALGORITHM_MEGOLM,
+	MTX_CRYPT_ALGORITHM_NUM,
+} mtx_crypt_algorithm_t;
+static char *mtx_crypt_algorithm_strs[] = {
+	"m.olm.v1.curve25519-aes-sha2",
+	"m.megolm.v1.aes-sha2",
+};
+typedef struct {
+	mtx_listentry_t entry;
+
+	char *identkey;
+
+	char *body;
+	int type;
+} mtx_ciphertext_info_t;
+typedef struct {
+	struct {
+		char *algorithm;
+		char *senderkey;
+	};
+	struct {
+		char *algorithm;
+		char *senderkey;
+		mtx_listentry_t ciphertext;
+	} olm;
+	struct {
+		char *algorithm;
+		char *senderkey;
+		char *ciphertext;
+		char *deviceid;
+		char *sessionid;
+	} megolm;
+} mtx_ev_encrypted_t;
+
+typedef struct {
+	mtx_crypt_algorithm_t algorithm;
+	char *roomid;
+	char *sessionid;
+	char *sessionkey;
+} mtx_ev_room_key_t;
+
+typedef enum {
+	MTX_KEY_REQUEST,
+	MTX_KEY_REQUEST_CANCEL,
+	MTX_KEY_REQUEST_NUM,
+} mtx_key_request_action_t;
+static char *mtx_key_request_action_strs[] = {
+	"request",
+	"request_cancellation",
+};
+typedef struct {
+	char *algorithm;
+	char *roomid;
+	char *senderkey;
+	char *sessionid;
+} mtx_requested_key_info_t;
+typedef struct {
+	mtx_requested_key_info_t body;
+	mtx_key_request_action_t action;
+	char *deviceid;
+	char *requestid;
+} mtx_ev_room_key_request_t;
+
 /* room history visibility */
 typedef enum {
 	HISTVISIB_INVITED,
@@ -156,22 +252,52 @@ typedef enum {
 	HISTVISIB_WORLD,
 	HISTVISIB_NUM,
 } mtx_history_visibility_t;
+static char *mtx_history_visibility_strs[] = {
+	"invited",
+	"joined",
+	"shared",
+	"world_readable",
+};
 typedef struct {
 	mtx_history_visibility_t visib;
 } mtx_ev_history_visibility_t;
 
+/* guest access */
+typedef enum {
+	MTX_GUEST_ACCESS_CAN_JOIN,
+	MTX_GUEST_ACCESS_FORBIDDEN,
+	MTX_GUEST_ACCESS_NUM,
+} mtx_guest_access_t;
+static char *mtx_guest_access_strs[] = {
+	"can_join",
+	"forbidden",
+};
+typedef struct {
+	mtx_guest_access_t access;
+} mtx_ev_guest_access_t;
+
 /* TODO: implement msg events */
 typedef enum {
-	MSG_TEXT,
-	MSG_EMOTE,
-	MSG_NOTICE,
-	MSG_IMAGE,
-	MSG_FILE,
-	MSG_AUDIO,
-	MSG_LOCATION,
-	MSG_VIDEO,
-	MSG_NUM,
+	MTX_MSG_TEXT,
+	MTX_MSG_EMOTE,
+	MTX_MSG_NOTICE,
+	MTX_MSG_IMAGE,
+	MTX_MSG_FILE,
+	MTX_MSG_AUDIO,
+	MTX_MSG_LOCATION,
+	MTX_MSG_VIDEO,
+	MTX_MSG_NUM,
 } mtx_msg_type_t;
+static char *mtx_msg_type_strs[] = {
+	"m.text",
+	"m.emote",
+	"m.notice",
+	"m.image",
+	"m.file",
+	"m.audio",
+	"m.location",
+	"m.video",
+};
 typedef struct {
 	char *fmt;
 	char *fmtbody;
@@ -306,6 +432,15 @@ typedef enum {
 	MTX_ROOM_CONTEXT_LEAVE,
 	MTX_ROOM_CONTEXT_NUM,
 } mtx_room_context_t;
+static char *mtx_room_visibility_strs[] = {
+	"public",
+	"private",
+};
+typedef enum {
+	MTX_ROOM_VISIBILITY_PUBLIC,
+	MTX_ROOM_VISIBILITY_PRIVATE,
+	MTX_ROOM_VISIBILITY_NUM,
+} mtx_room_visibility_t;
 
 typedef struct {
 	mtx_listentry_t entry;
@@ -343,7 +478,10 @@ typedef struct {
 
 	mtx_encryption_t crypt;
 
+	mtx_guest_access_t guestaccess;
+
 	mtx_room_context_t context;
+	mtx_room_visibility_t visib;
 	mtx_room_history_t *history;
 
 	int dirty;
