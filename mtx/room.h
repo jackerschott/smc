@@ -23,9 +23,9 @@ typedef enum {
 
 	EVENT_ENCRYPTION,
 
-	EVENT_GUEST_ACCESS,
-
 	EVENT_HISTORY_VISIBILITY,
+
+	EVENT_GUEST_ACCESS,
 
 	EVENT_SERVER_ACL,
 
@@ -488,5 +488,8 @@ typedef struct {
 } mtx_room_t;
 
 mtx_member_t *mtx_find_member(mtx_listentry_t *members, const char *userid);
+
+void mtx_free_room(mtx_room_t *r);
+mtx_room_t *mtx_dup_room(mtx_room_t *room);
 
 #endif /* MTX_ROOM_H */

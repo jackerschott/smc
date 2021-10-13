@@ -89,10 +89,10 @@ int verify_device_object(json_object *obj, const char *userid,
 }
 int update_device(device_t *dev, const json_object *obj)
 {
-	if (json_dup_string_(obj, "device_it", &dev->id))
+	if (json_rpl_string_(obj, "device_it", &dev->id))
 		goto err_free_device;
 
-	if (json_dup_string_array_(obj, "algorithms", &dev->algorithms))
+	if (json_rpl_string_array(obj, "algorithms", &dev->algorithms))
 		goto err_free_device;
 
 	json_object *keys;
@@ -104,7 +104,7 @@ int update_device(device_t *dev, const json_object *obj)
 
 	json_object *usigned;
 	if (json_object_object_get_ex(obj, "unsigned", &usigned)) {
-		if (json_dup_string_(obj, "device_display_name", &dev->displayname))
+		if (json_rpl_string_(obj, "device_display_name", &dev->displayname))
 			goto err_free_device;
 	}
 
@@ -144,7 +144,7 @@ device_list_t *create_device_list(const char *owner)
 	memset(devlist, 0, sizeof(*devlist));
 	mtx_list_init(&devlist->devices);
 
-	if (strrpl(&devlist->owner, owner) == 0) {
+	if (strrpl(&devlist->owner, owner)) {
 		free(devlist);
 		return NULL;
 	}
@@ -181,7 +181,7 @@ int init_device_lists(mtx_listentry_t *devices, const mtx_listentry_t *devtracki
 int update_device_lists(mtx_listentry_t *devices, const json_object *devlists)
 {
 	char **changed = NULL;
-	if (json_dup_string_array_(devlists, "changed", &changed) == -1)
+	if (json_rpl_string_array(devlists, "changed", &changed) == -1)
 		return 1;
 
 	if (changed) {
@@ -199,9 +199,10 @@ int update_device_lists(mtx_listentry_t *devices, const json_object *devlists)
 			devlist->dirty = 1;
 		}
 	}
+	strarr_free(changed);
 
 	char **left = NULL;
-	if (json_dup_string_array_(devlists, "left", &left) == -1)
+	if (json_rpl_string_array(devlists, "left", &left) == -1)
 		return 1;
 
 	if (left) {
@@ -213,6 +214,7 @@ int update_device_lists(mtx_listentry_t *devices, const json_object *devlists)
 			free_device_list(devlist);
 		}
 	}
+	strarr_free(left);
 
 	return 0;
 }

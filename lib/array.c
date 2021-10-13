@@ -8,7 +8,7 @@ char **strarr_new(size_t n)
 	char **arr = malloc((n + 1) * sizeof(*arr));
 	if (!arr)
 		return NULL;
-	memset(arr, 0, sizeof(*arr));
+	memset(arr, 0, (n + 1) * sizeof(*arr));
 
 	return arr;
 }
@@ -20,6 +20,7 @@ void strarr_free(char **arr)
 	for (size_t i = 0; arr[i]; ++i) {
 		free(arr[i]);
 	}
+	free(arr);
 }
 
 size_t strarr_num(char **arr)

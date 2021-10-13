@@ -44,24 +44,21 @@ int json_get_string_(const json_object *obj, const char *key, const char **str)
 	*str = json_object_get_string(tmp);
 	return 0;
 }
-int json_dup_string_(const json_object *obj, const char *key, char **str)
+int json_rpl_string_(const json_object *obj, const char *key, char **str)
 {
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
 		return 1;
 
 	assert(json_object_is_type(tmp, json_type_string));
-	const char *_s = json_object_get_string(tmp);
-	if (!_s) {
+	const char *s = json_object_get_string(tmp);
+	if (!s) {
 		*str = NULL;
 		return 0;
 	}
 
-	char *s = realloc(*str, strlen(_s) + 1);
-	if (!s)
+	if (strrpl(str, s))
 		return -1;
-	strcpy(s, _s);
-	*str = s;
 	return 0;
 }
 int json_get_bool_(const json_object *obj, const char *key, int *b)
@@ -88,7 +85,7 @@ int json_get_enum_(const json_object *obj, const char *key,
 	*e = str2enum(s, strs, n);
 	return 0;
 }
-int json_dup_string_array_(const json_object *obj, const char *key, char ***_strs)
+int json_rpl_string_array(const json_object *obj, const char *key, char ***_strs)
 {
 	json_object *tmp;
 	if (!json_object_object_get_ex(obj, key, &tmp))
@@ -96,18 +93,18 @@ int json_dup_string_array_(const json_object *obj, const char *key, char ***_str
 
 	strarr_free(*_strs);
 
-	size_t n = json_object_array_length(obj);
+	size_t n = json_object_array_length(tmp);
 	char **strs = strarr_new(n);
 	if (!strs)
 		return -1;
 
 	for (size_t i = 0; i < n; ++i) {
-		json_object *element = json_object_array_get_idx(obj, i);
+		json_object *element = json_object_array_get_idx(tmp, i);
 		assert(json_object_is_type(element, json_type_string));
 
 		char *s = strdup(json_object_get_string(element));
 		if (!s)
-			goto memerr_free_array;
+			goto err_free_array;
 
 		strs[i] = s;
 	}
@@ -115,10 +112,8 @@ int json_dup_string_array_(const json_object *obj, const char *key, char ***_str
 	*_strs = strs;
 	return 0;
 
-memerr_free_array:
-	for (size_t i = 0; strs[i] != NULL; ++i) {
-		free(strs[i]);
-	}
+err_free_array:
+	strarr_free(strs);
 	return -1;
 }
 int json_dup_object_(const json_object *obj, const char *key, json_object **o)

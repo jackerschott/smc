@@ -82,9 +82,7 @@ void free_msg(mtx_msg_t *m);
 void free_room_direct_state_context(mtx_room_t *r);
 
 /* general */
-void free_room(mtx_room_t *r);
 mtx_room_t *new_room(const char *id, mtx_room_context_t context);
-mtx_room_t *dup_room(mtx_room_t *room);
 void clear_room_direct_state(mtx_room_t *r);
 
 #endif /* MTX_STATE_ROOM_H */

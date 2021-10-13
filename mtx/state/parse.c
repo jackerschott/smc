@@ -18,10 +18,10 @@ static int get_ev_canonalias(const json_object *obj, mtx_ev_canonalias_t **_cano
 		return 1;
 	memset(canonalias, 0, sizeof(*canonalias));
 
-	if (json_dup_string_(obj, "alias", &canonalias->alias) == -1)
+	if (json_rpl_string_(obj, "alias", &canonalias->alias) == -1)
 		goto err_free_canonalias;
 
-	if (json_dup_string_array_(obj, "alt_aliases", &canonalias->altaliases) == -1)
+	if (json_rpl_string_array(obj, "alt_aliases", &canonalias->altaliases) == -1)
 		goto err_free_canonalias;
 
 	*_canonalias = canonalias;
@@ -45,20 +45,20 @@ static int get_ev_create(const json_object *obj, mtx_ev_create_t **_create)
 		goto err_free_create;
 	create->creator = creator;
 
-	if (json_dup_string_(obj, "creator", &create->creator))
+	if (json_rpl_string_(obj, "creator", &create->creator))
 		goto err_free_create;
 
 	json_get_bool_(obj, "m.federate", &create->federate);
 
-	if (json_dup_string_(obj, "room_version", &create->version) == -1)
+	if (json_rpl_string_(obj, "room_version", &create->version) == -1)
 		goto err_free_create;
 
 	json_object *pred;
 	if (json_object_object_get_ex(obj, "predecessor", &pred)) {
-		if (json_dup_string_(pred, "room_id", &create->previd))
+		if (json_rpl_string_(pred, "room_id", &create->previd))
 			goto err_free_create;
 
-		if (json_dup_string_(pred, "event_id", &create->prev_last_eventid))
+		if (json_rpl_string_(pred, "event_id", &create->prev_last_eventid))
 			goto err_free_create;
 	}
 
@@ -101,10 +101,10 @@ static int get_ev_member(const json_object *obj, mtx_ev_member_t **_member)
 	member->isdirect = -1;
 	mtx_list_init(&member->invite_room_events);
 
-	if (json_dup_string_(obj, "avatar_url", &member->avatarurl) == -1)
+	if (json_rpl_string_(obj, "avatar_url", &member->avatarurl) == -1)
 		goto err_free_member;
 
-	if (json_dup_string_(obj, "displayname", &member->displayname) == -1)
+	if (json_rpl_string_(obj, "displayname", &member->displayname) == -1)
 		goto err_free_member;
 
 	if (json_get_enum_(obj, "membership", (int *)&member->membership,
@@ -115,7 +115,7 @@ static int get_ev_member(const json_object *obj, mtx_ev_member_t **_member)
 
 	json_object *tpinvite;
 	if (json_object_object_get_ex(obj, "third_party_invite", &tpinvite)) {
-		if (json_dup_string_(tpinvite, "display_name", &member->displayname))
+		if (json_rpl_string_(tpinvite, "display_name", &member->displayname))
 			goto err_free_member;
 
 		json_object *_signed;
@@ -123,13 +123,13 @@ static int get_ev_member(const json_object *obj, mtx_ev_member_t **_member)
 			goto err_free_member;
 
 		mtx_thirdparty_invite_t tpinvite;
-		if (json_dup_string_(_signed, "mxid", &tpinvite.mxid))
+		if (json_rpl_string_(_signed, "mxid", &tpinvite.mxid))
 			goto err_free_member;
 
 		if (json_dup_object_(_signed, "signatures", &tpinvite.signatures))
 			goto err_free_member;
 
-		if (json_dup_string_(_signed, "token", &tpinvite.token))
+		if (json_rpl_string_(_signed, "token", &tpinvite.token))
 			goto err_free_member;
 	}
 
@@ -231,7 +231,7 @@ static int get_ev_redaction(const json_object *obj, mtx_ev_redaction_t **_redact
 		return 1;
 	memset(redaction, 0, sizeof(*redaction));
 
-	if (json_dup_string_(obj, "reason", &redaction->reason) == -1) {
+	if (json_rpl_string_(obj, "reason", &redaction->reason) == -1) {
 		free(redaction);
 		return 1;
 	}
@@ -247,7 +247,7 @@ static int get_ev_name(const json_object *obj, mtx_ev_name_t **_name)
 		return 1;
 	memset(name, 0, sizeof(*name));
 
-	if (json_dup_string_(obj, "name", &name->name)) {
+	if (json_rpl_string_(obj, "name", &name->name)) {
 		free(name);
 		return 1;
 	}
@@ -263,7 +263,7 @@ static int get_ev_topic(const json_object *obj, mtx_ev_topic_t **_topic)
 		return 1;
 	memset(topic, 0, sizeof(*topic));
 
-	if (json_dup_string_(obj, "topic", &topic->topic)) {
+	if (json_rpl_string_(obj, "topic", &topic->topic)) {
 		free(topic);
 		return 1;
 	}
@@ -277,7 +277,7 @@ static int get_avatar_image_info(const json_object *obj, mtx_avatar_image_info_t
 	json_get_uint64_(obj, "h", &info->h);
 	json_get_uint64_(obj, "w", &info->w);
 
-	if (json_dup_string_(obj, "mimetype", &info->mimetype))
+	if (json_rpl_string_(obj, "mimetype", &info->mimetype))
 		return 1;
 
 	json_get_uint64_(obj, "size", &info->size);
@@ -291,7 +291,7 @@ static int get_ev_avatar(const json_object *obj, mtx_ev_avatar_t **_avatar)
 		return 1;
 	memset(avatar, 0, sizeof(*avatar));
 
-	if (json_dup_string_(obj, "url", &avatar->url))
+	if (json_rpl_string_(obj, "url", &avatar->url))
 		goto err_free_avatar;
 
 	json_object *info;
@@ -299,7 +299,7 @@ static int get_ev_avatar(const json_object *obj, mtx_ev_avatar_t **_avatar)
 		if (get_avatar_image_info(info, &avatar->info))
 			goto err_free_avatar;
 
-		if (json_dup_string_(info, "thumbnail_url", &avatar->thumburl) == -1)
+		if (json_rpl_string_(info, "thumbnail_url", &avatar->thumburl) == -1)
 			goto err_free_avatar;
 
 		// TODO: Get thumbnail file
@@ -328,7 +328,7 @@ static int get_ev_encryption(const json_object *obj, mtx_ev_encryption_t **_encr
 	encryption->rotmsgnum = 604800000;
 	encryption->rotperiod = 100;
 
-	if (json_dup_string_(obj, "algorithm", &encryption->algorithm))
+	if (json_rpl_string_(obj, "algorithm", &encryption->algorithm))
 		goto err_free_encryption;
 
 	json_get_uint64_(obj, "rotation_period_ms", &encryption->rotperiod);
@@ -353,7 +353,7 @@ static int get_ciphertext_info(const json_object *obj,
 	if (strrpl(&info->identkey, identkey))
 		goto err_free_info;
 
-	if (json_dup_string_(obj, "body", &info->body) == -1) {
+	if (json_rpl_string_(obj, "body", &info->body) == -1) {
 		goto err_free_info;
 	}
 
@@ -373,7 +373,7 @@ static int get_ev_encrypted(const json_object *obj, mtx_ev_encrypted_t **_encryp
 		return 1;
 	memset(encrypted, 0, sizeof(*encrypted));
 
-	if (json_dup_string_(obj, "algorithm", &encrypted->algorithm))
+	if (json_rpl_string_(obj, "algorithm", &encrypted->algorithm))
 		goto err_free_encrypted;
 
 	const char *algolm = mtx_crypt_algorithm_strs[MTX_CRYPT_ALGORITHM_OLM];
@@ -393,13 +393,13 @@ static int get_ev_encrypted(const json_object *obj, mtx_ev_encrypted_t **_encryp
 			mtx_list_add(&encrypted->olm.ciphertext, &info->entry);
 		}
 	} else if (strcmp(encrypted->algorithm, algmegolm) == 0) {
-		if (json_dup_string_(obj, "ciphertext", &encrypted->megolm.ciphertext))
+		if (json_rpl_string_(obj, "ciphertext", &encrypted->megolm.ciphertext))
 			goto err_free_encrypted;
 
-		if (json_dup_string_(obj, "device_id", &encrypted->megolm.deviceid))
+		if (json_rpl_string_(obj, "device_id", &encrypted->megolm.deviceid))
 			goto err_free_encrypted;
 
-		if (json_dup_string_(obj, "session_id", &encrypted->megolm.sessionid))
+		if (json_rpl_string_(obj, "session_id", &encrypted->megolm.sessionid))
 			goto err_free_encrypted;
 	} else {
 		assert(0);
@@ -427,23 +427,23 @@ static int get_ev_room_key_request(const json_object *obj, mtx_ev_room_key_reque
 	int cancellation = request->action == MTX_KEY_REQUEST_CANCEL;
 	
 	if (!cancellation) {
-		if (json_dup_string_(obj, "algorithm", &request->body.algorithm))
+		if (json_rpl_string_(obj, "algorithm", &request->body.algorithm))
 			goto err_free_request;
 
-		if (json_dup_string_(obj, "room_id", &request->body.roomid))
+		if (json_rpl_string_(obj, "room_id", &request->body.roomid))
 			goto err_free_request;
 
-		if (json_dup_string_(obj, "sender_key", &request->body.senderkey))
+		if (json_rpl_string_(obj, "sender_key", &request->body.senderkey))
 			goto err_free_request;
 
-		if (json_dup_string_(obj, "session_id", &request->body.sessionid))
+		if (json_rpl_string_(obj, "session_id", &request->body.sessionid))
 			goto err_free_request;
 	}
 
-	if (json_dup_string_(obj, "requesting_device_id", &request->deviceid))
+	if (json_rpl_string_(obj, "requesting_device_id", &request->deviceid))
 		goto err_free_request;
 
-	if (json_dup_string_(obj, "request_id", &request->requestid))
+	if (json_rpl_string_(obj, "request_id", &request->requestid))
 		goto err_free_request;
 
 	*_request = request;
@@ -480,7 +480,7 @@ static int get_ev_guest_access(const json_object *obj, mtx_ev_guest_access_t **_
 		return 1;
 	memset(guestaccess, 0, sizeof(*guestaccess));
 	
-	if (json_get_enum_(obj, "guest_access", (int *)guestaccess->access,
+	if (json_get_enum_(obj, "guest_access", (int *)&guestaccess->access,
 				MTX_GUEST_ACCESS_NUM, mtx_guest_access_strs))
 		return 1;
 
@@ -499,10 +499,10 @@ static int get_message_text(const json_object *obj, mtx_message_text_t **_msg)
 		return 1;
 	memset(msg, 0, sizeof(*msg));
 
-	if (json_dup_string_(obj, "format", &msg->fmt) == -1)
+	if (json_rpl_string_(obj, "format", &msg->fmt) == -1)
 		goto err_free_msg;
 
-	if (json_dup_string_(obj, "formatted_body", &msg->fmtbody) == -1)
+	if (json_rpl_string_(obj, "formatted_body", &msg->fmtbody) == -1)
 		goto err_free_msg;
 
 	*_msg = msg;
@@ -519,10 +519,10 @@ static int get_message_emote(const json_object *obj, mtx_message_emote_t **_msg)
 		return 1;
 	memset(msg, 0, sizeof(*msg));
 
-	if (json_dup_string_(obj, "format", &msg->fmt) == -1)
+	if (json_rpl_string_(obj, "format", &msg->fmt) == -1)
 		goto err_free_msg;
 
-	if (json_dup_string_(obj, "formatted_body", &msg->fmtbody) == -1)
+	if (json_rpl_string_(obj, "formatted_body", &msg->fmtbody) == -1)
 		goto err_free_msg;
 
 	*_msg = msg;
@@ -559,7 +559,7 @@ static int get_ev_message(const json_object *obj, mtx_ev_message_t **_msg)
 
 	json_get_enum_(obj, "msgtype", (int *)&msg->type, MTX_MSG_NUM, mtx_msg_type_strs);
 
-	if (json_dup_string_(obj, "body", &msg->body))
+	if (json_rpl_string_(obj, "body", &msg->body))
 		return 1;
 
 	if (get_message_content(obj, msg->type, &msg->content))
@@ -626,10 +626,10 @@ static int get_event_content(const json_object *obj, mtx_eventtype_t type, void 
 }
 static int get_roomevent_fields(const json_object *obj, mtx_event_t *event)
 {
-	if (json_dup_string_(obj, "event_id", &event->id))
+	if (json_rpl_string_(obj, "event_id", &event->id))
 		return 1;
 
-	if (json_dup_string_(obj, "sender", &event->sender))
+	if (json_rpl_string_(obj, "sender", &event->sender))
 		return 1;
 
 	json_get_uint64_(obj, "origin_server_ts", &event->ts);
@@ -643,7 +643,7 @@ static int get_roomevent_fields(const json_object *obj, mtx_event_t *event)
 				&& get_event(redactreason, &event->redactreason))
 			return 1;
 
-		if (json_dup_string_(usigned, "transaction_id", &event->txnid) == -1)
+		if (json_rpl_string_(usigned, "transaction_id", &event->txnid) == -1)
 			return 1;
 	}
 
@@ -654,7 +654,7 @@ static int get_statevent_fields(const json_object *obj, mtx_event_t *event)
 	if (get_roomevent_fields(obj, event))
 		return 1;
 
-	if (json_dup_string_(obj, "state_key", &event->statekey))
+	if (json_rpl_string_(obj, "state_key", &event->statekey))
 		return 1;
 
 	json_object *prevcontent;
@@ -681,7 +681,7 @@ static int get_event(const json_object *obj, mtx_event_t **_event)
 		goto err_free_event;
 
 	if (event->type == EVENT_REDACTION &&
-			json_dup_string_(obj, "redacts", &event->redacts)) {
+			json_rpl_string_(obj, "redacts", &event->redacts)) {
 		goto err_free_event;
 	}
 
@@ -803,7 +803,7 @@ static void redact(mtx_event_t *event)
 
 static int get_room_summary(const json_object *obj, mtx_room_summary_t *summary)
 {
-	if (json_dup_string_array_(obj, "m.heroes", &summary->heroes) == -1)
+	if (json_rpl_string_array(obj, "m.heroes", &summary->heroes) == -1)
 		return 1;
 
 	json_get_int_(obj, "m.joined_member_count", &summary->njoined);
@@ -814,6 +814,10 @@ static int get_room_summary(const json_object *obj, mtx_room_summary_t *summary)
 static int update_timeline_chunks(const json_object *obj,
 		mtx_listentry_t *chunks, mtx_event_chunk_type_t chunktype)
 {
+	size_t n = json_object_array_length(obj);
+	if (n == 0)
+		return 0;
+
 	mtx_event_chunk_t *chunk = NULL;
 	if (!mtx_list_empty(chunks))
 		chunk = mtx_list_entry_content(chunks->prev, mtx_event_chunk_t, entry);
@@ -829,7 +833,6 @@ static int update_timeline_chunks(const json_object *obj,
 		chunk = c;
 	}
 
-	size_t n = json_object_array_length(obj);
 	for (size_t i = 0; i < n; ++i) {
 		json_object *o = json_object_array_get_idx(obj, i);
 
@@ -870,7 +873,7 @@ static int update_joined_room_history(const json_object *obj, mtx_room_history_t
 	if (json_object_object_get_ex(obj, "timeline", &timeline)) {
 		json_get_bool_(timeline, "limited", &history->timeline.limited);
 
-		if (json_dup_string_(timeline, "prev_batch",
+		if (json_rpl_string_(timeline, "prev_batch",
 					&history->timeline.prevbatch) == -1) {
 			return 1;
 		}
@@ -922,7 +925,7 @@ static int update_left_room_history(const json_object *obj, mtx_room_history_t *
 	if (json_object_object_get_ex(obj, "timeline", &timeline)) {
 		json_get_int_(timeline, "limited", &history->timeline.limited);
 
-		if (json_dup_string_(timeline, "prev_batch",
+		if (json_rpl_string_(timeline, "prev_batch",
 					&history->timeline.prevbatch)) {
 			return 1;
 		}

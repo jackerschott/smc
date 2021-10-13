@@ -209,16 +209,17 @@ int create_device_keys(OlmAccount *account, char **signkey, char **identkey)
 	}
 	free(keys);
 
-	if (json_dup_string_(_keys, "ed25519", signkey)) {
+	if (json_rpl_string_(_keys, "ed25519", signkey)) {
 		json_object_put(_keys);
 		return 1;
 	}
 
-	if (json_dup_string_(_keys, "curve25519", identkey)) {
+	if (json_rpl_string_(_keys, "curve25519", identkey)) {
 		json_object_put(_keys);
 		return 1;
 	}
 
+	json_object_put(_keys);
 	return 0;
 }
 int create_one_time_keys(OlmAccount *account, mtx_listentry_t *otkeys)
@@ -281,6 +282,7 @@ int create_one_time_keys(OlmAccount *account, mtx_listentry_t *otkeys)
 		}
 	}
 
+	json_object_put(_keys);
 	return 0;
 
 err_free_otkeys:
@@ -380,7 +382,7 @@ one_time_key_t *parse_one_time_key(const char *keyidentif, json_object *_key)
 			goto err_free_otkey;
 	} else if (strcmp(algorithm, "signed_curve25519") == 0) {
 
-		if (json_dup_string_(_key, "key", &otkey->key))
+		if (json_rpl_string_(_key, "key", &otkey->key))
 			goto err_free_otkey;
 	} else {
 		assert(0);

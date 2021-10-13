@@ -33,6 +33,8 @@ void mtx_free_session(mtx_session_t *session);
 mtx_error_t mtx_last_error(void);
 char *mtx_last_error_msg(void);
 
+void mtx_free_register_flow(mtx_register_flow_t *flow);
+mtx_register_flow_t *mtx_dup_register_flow(mtx_register_flow_t *_flow);
 int mtx_register_user(mtx_session_t *session, const char *hostname, const char *username,
 		const char *pass, char **devid, const char *devname, const int login,
 		const mtx_register_flow_t *flow, mtx_listentry_t *flows, char **sessionkey);

@@ -314,6 +314,9 @@ int apply_statevent(const mtx_event_t *event, mtx_room_t *r)
 	case EVENT_HISTORY_VISIBILITY:
 		err = apply_event_history_visibility(event, r);
 		break;
+	case EVENT_GUEST_ACCESS:
+		err = apply_event_guest_access(event, r);
+		break;
 	default:
 		assert(0);
 	}

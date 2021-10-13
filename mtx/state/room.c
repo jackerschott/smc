@@ -925,6 +925,7 @@ void *dup_event_content(mtx_eventtype_t type, void *content)
 		break;
 	case EVENT_GUEST_ACCESS:
 		c = dup_ev_guest_access(content);
+		break;
 	case EVENT_REDACTION:
 		c = dup_ev_redaction(content);
 		break;
@@ -1264,7 +1265,7 @@ void free_room_direct_state_context(mtx_room_t *r)
 }
 
 /* general */
-void free_room(mtx_room_t *r)
+void mtx_free_room(mtx_room_t *r)
 {
 	free_room_direct_state_context(r);
 	free_room_history_context(r);
@@ -1305,7 +1306,7 @@ mtx_room_t *new_room(const char *id, mtx_room_context_t context)
 	mtx_list_init(&r->msgs);
 
 	if (strrpl(&r->id, id)) {
-		free_room(r);
+		mtx_free_room(r);
 		return NULL;
 	}
 
@@ -1313,7 +1314,7 @@ mtx_room_t *new_room(const char *id, mtx_room_context_t context)
 
 	mtx_room_history_t *history = new_room_history();
 	if (!history) {
-		free_room(r);
+		mtx_free_room(r);
 		return NULL;
 	}
 	r->history = history;
@@ -1321,7 +1322,7 @@ mtx_room_t *new_room(const char *id, mtx_room_context_t context)
 	r->dirty = 1;
 	return r;
 }
-mtx_room_t *dup_room(mtx_room_t *room)
+mtx_room_t *mtx_dup_room(mtx_room_t *room)
 {
 	mtx_room_t *r = malloc(sizeof(*r));
 	if (!r)
@@ -1431,7 +1432,7 @@ mtx_room_t *dup_room(mtx_room_t *room)
 	return r;
 
 err_free_room:
-	free_room(r);
+	mtx_free_room(r);
 	return NULL;
 }
 void clear_room_direct_state(mtx_room_t *room)
