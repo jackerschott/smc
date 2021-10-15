@@ -57,6 +57,7 @@ typedef struct  {
 typedef enum {
 	MTX_ERR_SUCCESS,
 	MTX_ERR_LOCAL,
+	MTX_ERR_CONNECTION,
 
 	/* matrix api errors */
 	MTX_ERR_M_FORBIDDEN,

@@ -123,7 +123,7 @@ static void reset_handle(CURL *handle)
 	curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, hrecv);
 	curl_easy_setopt(handle, CURLOPT_SSL_VERIFYHOST, 0); /* for testing */
 	curl_easy_setopt(handle, CURLOPT_SSL_VERIFYPEER, 0); /* for testing */
-	curl_easy_setopt(handle, CURLOPT_VERBOSE, 2); /* for testing */
+	// curl_easy_setopt(handle, CURLOPT_VERBOSE, 2); /* for testing */
 }
 static int get_response_error(json_object *resp,
 		int code, mtx_error_t *error, char *errormsg)
@@ -185,7 +185,8 @@ static int api_call(const char *hostname, const char *request, const char *targe
 	if (err) {
 		curl_slist_free_all(header);
 		free(respbuf.data);
-		goto err_local;
+		lasterror = MTX_ERR_CONNECTION;
+		return 1;
 	}
 	curl_slist_free_all(header);
 	respbuf.data[respbuf.len] = 0;
@@ -306,6 +307,8 @@ char *mtx_last_error_msg(void)
 		msg = strdup(last_api_error_msg);
 	} else if (lasterror == MTX_ERR_LOCAL) {
 		msg = strdup("local error");
+	} else if (lasterror == MTX_ERR_CONNECTION) {
+		msg = strdup("connection error");
 	} else if (lasterror == MTX_ERR_SUCCESS) {
 		msg = strdup("success");
 	} else {
@@ -834,6 +837,10 @@ const char *mtx_accesstoken(mtx_session_t *session)
 const char *mtx_device_id(mtx_session_t *session)
 {
 	return session->device->id;
+}
+const char *mtx_hostname(mtx_session_t *session)
+{
+	return session->hostname;
 }
 
 int mtx_logout(mtx_session_t *session)

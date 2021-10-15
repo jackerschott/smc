@@ -56,6 +56,7 @@ int mtx_recall_past_session(mtx_session_t *session, const char *hostname,
 		const char *accesstoken, const char *devid);
 const char *mtx_accesstoken(mtx_session_t *session);
 const char *mtx_device_id(mtx_session_t *session);
+const char *mtx_hostname(mtx_session_t *session);
 
 int mtx_exchange_keys(mtx_session_t *session, const mtx_listentry_t *devtrackinfos,
 		const char *sincetoken, int timeout);
